@@ -1,13 +1,16 @@
-from collections import deque, defaultdict
+import warnings
+from collections import defaultdict, deque
 from typing import Any, NamedTuple
+
 import dm_env
+import gym
 import numpy as np
 from dm_control import suite
 from dm_control.suite.wrappers import action_scale
 from dm_env import StepType, specs
-import gym
-import warnings
-warnings.filterwarnings("ignore", category=DeprecationWarning) 
+
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+
 
 class BaseWrapper(dm_env.Environment):
     def __init__(self, env):
@@ -15,11 +18,15 @@ class BaseWrapper(dm_env.Environment):
 
     def step(self, action):
         return self._env.step(action)
-    
-    def reset(self,):
+
+    def reset(
+        self,
+    ):
         return self._env.reset()
 
-    def close(self,):
+    def close(
+        self,
+    ):
         return self._env.close()
 
     def observation_spec(self):
@@ -74,7 +81,7 @@ class ActionRepeatWrapper(BaseWrapper):
 
 
 class FrameStackWrapper(BaseWrapper):
-    def __init__(self, env, num_frames, pixels_key='pixels'):
+    def __init__(self, env, num_frames, pixels_key="pixels"):
         super().__init__(env)
         self._num_frames = num_frames
         self._frames = deque([], maxlen=num_frames)
@@ -86,12 +93,15 @@ class FrameStackWrapper(BaseWrapper):
         pixels_shape = wrapped_obs_spec[pixels_key].shape
         if len(pixels_shape) == 4:
             pixels_shape = pixels_shape[1:]
-        self._obs_spec = specs.BoundedArray(shape=np.concatenate(
-            [[pixels_shape[2] * num_frames], pixels_shape[:2]], axis=0),
-                                            dtype=np.uint8,
-                                            minimum=0,
-                                            maximum=255,
-                                            name='observation')
+        self._obs_spec = specs.BoundedArray(
+            shape=np.concatenate(
+                [[pixels_shape[2] * num_frames], pixels_shape[:2]], axis=0
+            ),
+            dtype=np.uint8,
+            minimum=0,
+            maximum=255,
+            name="observation",
+        )
 
     def _transform_observation(self, time_step):
         assert len(self._frames) == self._num_frames
@@ -125,11 +135,13 @@ class ActionDTypeWrapper(BaseWrapper):
     def __init__(self, env, dtype):
         super().__init__(env)
         wrapped_action_spec = env.action_spec()
-        self._action_spec = specs.BoundedArray(wrapped_action_spec.shape,
-                                            dtype,
-                                            wrapped_action_spec.minimum,
-                                            wrapped_action_spec.maximum,
-                                            'action')
+        self._action_spec = specs.BoundedArray(
+            wrapped_action_spec.shape,
+            dtype,
+            wrapped_action_spec.minimum,
+            wrapped_action_spec.maximum,
+            "action",
+        )
 
     def step(self, action):
         action = action.astype(self._env.action_spec().dtype)
@@ -155,19 +167,21 @@ class ExtendedTimeStepWrapper(BaseWrapper):
         if action is None:
             action_spec = self.action_spec()
             action = np.zeros(action_spec.shape, dtype=action_spec.dtype)
-        return ExtendedTimeStep(observation=time_step.observation,
-                                step_type=time_step.step_type,
-                                action=action,
-                                reward=time_step.reward or 0.0,
-                                discount=time_step.discount or 1.0)
+        return ExtendedTimeStep(
+            observation=time_step.observation,
+            step_type=time_step.step_type,
+            action=action,
+            reward=time_step.reward or 0.0,
+            discount=time_step.discount or 1.0,
+        )
 
 
 class TimeStepToGymWrapper(object):
     def __init__(self, env, domain, task, action_repeat, modality):
-        try: # pixels
+        try:  # pixels
             obs_shp = env.observation_spec().shape
-            assert modality == 'pixels'
-        except: # state
+            assert modality == "pixels"
+        except:  # state
             obs_shp = []
             for v in env.observation_spec().values():
                 try:
@@ -179,25 +193,33 @@ class TimeStepToGymWrapper(object):
                     shp = 1
                 obs_shp.append(shp)
             obs_shp = (np.sum(obs_shp),)
-            assert modality != 'pixels'
+            assert modality != "pixels"
         act_shp = env.action_spec().shape
         self.observation_space = gym.spaces.Box(
-            low=np.full(obs_shp, -np.inf if modality != 'pixels' else env.observation_spec().minimum),
-            high=np.full(obs_shp, np.inf if modality != 'pixels' else env.observation_spec().maximum),
+            low=np.full(
+                obs_shp,
+                -np.inf if modality != "pixels" else env.observation_spec().minimum,
+            ),
+            high=np.full(
+                obs_shp,
+                np.inf if modality != "pixels" else env.observation_spec().maximum,
+            ),
             shape=obs_shp,
-            dtype=np.float32 if modality != 'pixels' else np.uint8)
+            dtype=np.float32 if modality != "pixels" else np.uint8,
+        )
         self.action_space = gym.spaces.Box(
             low=np.full(act_shp, env.action_spec().minimum),
             high=np.full(act_shp, env.action_spec().maximum),
             shape=act_shp,
-            dtype=env.action_spec().dtype)
+            dtype=env.action_spec().dtype,
+        )
         self.env = env
         self.domain = domain
         self.task = task
-        self.ep_len = 1000//action_repeat
+        self.ep_len = 1000 // action_repeat
         self.modality = modality
         self.t = 0
-    
+
     @property
     def unwrapped(self):
         return self.env
@@ -209,52 +231,55 @@ class TimeStepToGymWrapper(object):
     @property
     def metadata(self):
         return None
-    
+
     def _obs_to_array(self, obs):
-        if self.modality != 'pixels':
+        if self.modality != "pixels":
             return np.concatenate([v.flatten() for v in obs.values()])
         return obs
 
     def reset(self):
         self.t = 0
         return self._obs_to_array(self.env.reset().observation)
-    
+
     def step(self, action):
         self.t += 1
         time_step = self.env.step(action)
-        return self._obs_to_array(time_step.observation), time_step.reward, time_step.last() or self.t == self.ep_len, defaultdict(float)
+        return (
+            self._obs_to_array(time_step.observation),
+            time_step.reward,
+            time_step.last() or self.t == self.ep_len,
+            defaultdict(float),
+        )
 
-    def render(self, mode='rgb_array', width=384, height=384, camera_id=0):
+    def render(self, mode="rgb_array", width=384, height=384, camera_id=0):
         camera_id = dict(quadruped=2).get(self.domain, camera_id)
         return self.env.physics.render(height, width, camera_id)
-    
 
-def make_env(env_name, seed, action_repeat, modality='state', frame_stack=None, img_size=None):
+
+def make_env(
+    env_name, seed, action_repeat, modality="state", frame_stack=None, img_size=None
+):
     """
     Make environment for TD-MPC experiments.
     Adapted from https://github.com/facebookresearch/drqv2
     """
-    domain, task = str(env_name).replace('-', '_').split('_', 1)
-    domain = dict(cup='ball_in_cup').get(domain, domain)
+    domain, task = str(env_name).replace("-", "_").split("_", 1)
+    domain = dict(cup="ball_in_cup").get(domain, domain)
     assert (domain, task) in suite.ALL_TASKS
 
-    env = suite.load(domain,
-                    task,
-                    task_kwargs={'random': seed},
-                    visualize_reward=False)
+    env = suite.load(domain, task, task_kwargs={"random": seed}, visualize_reward=False)
     _obs = env.reset()
     obs_key = _obs.observation.keys()
     env = ActionDTypeWrapper(env, np.float32)
     env = ActionRepeatWrapper(env, action_repeat)
 
-    if modality=='pixels':
+    if modality == "pixels":
         from dm_control.suite.wrappers import pixels
+
         if (domain, task) in suite.ALL_TASKS:
             camera_id = dict(quadruped=2).get(domain, 0)
             render_kwargs = dict(height=img_size, width=img_size, camera_id=camera_id)
-            env = pixels.Wrapper(env,
-                                pixels_only=True,
-                                render_kwargs=render_kwargs)
+            env = pixels.Wrapper(env, pixels_only=True, render_kwargs=render_kwargs)
         env = FrameStackWrapper(env, frame_stack, modality)
     env = ExtendedTimeStepWrapper(env)
     env = TimeStepToGymWrapper(env, domain, task, action_repeat, modality)

@@ -37,7 +37,7 @@ Export a plot from wandb is easy:
 
 1. Open your wandb workspace and select the runs to plot.
 2. Edit the plot (e.g., episode-ep_reward plot) you gonna export (click the ✏️ button at the upper right corner of the panel).
-    1. In `Data`, change the x-, and y-axis to `episodes` and `ep_reward` 
+    1. In `Data`, change the x-, and y-axis to `episodes` and `ep_reward`
     2. In `Grouping`, group runs and select `mean` and `stddev` if needed.
     3. In `Chart`, edit the name of the x- and y-axis.
     4. In `Legend`, change the legend name.

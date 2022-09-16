@@ -4,8 +4,9 @@ import numpy as np
 
 class VideoRecorder:
     """Utility class for logging evaluation videos."""
-    def __init__(self, root_dir, render_size=256, fps=20): 
-        self.save_dir = (root_dir / 'eval_video') if root_dir else None
+
+    def __init__(self, root_dir, render_size=256, fps=20):
+        self.save_dir = (root_dir / "eval_video") if root_dir else None
         self.save_dir.mkdir(exist_ok=True, parents=True)
 
         self.render_size = render_size
@@ -20,10 +21,17 @@ class VideoRecorder:
 
     def record(self, env):
         if self.enabled:
-            if hasattr(env, 'physics'):
-                frame = env.physics.render(height=self.render_size, width=self.render_size, camera_id=0)
+            if hasattr(env, "physics"):
+                frame = env.physics.render(
+                    height=self.render_size, width=self.render_size, camera_id=0
+                )
             else:
-                frame = env.render(mode='rgb_array', height=self.render_size, width=self.render_size, camera_id=0)
+                frame = env.render(
+                    mode="rgb_array",
+                    height=self.render_size,
+                    width=self.render_size,
+                    camera_id=0,
+                )
             self.frames.append(frame)
 
     def save(self, step):

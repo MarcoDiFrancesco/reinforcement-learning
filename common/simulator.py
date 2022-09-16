@@ -1,13 +1,17 @@
-import dataclasses
 import copy
+import dataclasses
+
 import gym
+
 
 ## Simulator
 @dataclasses.dataclass
 class Checkpoint:
     """Holds the checkpoint state for the environment simulator."""
+
     needs_reset: bool
     env: gym.Env
+
 
 class SimulatorWrapper(gym.Wrapper):
     def __init__(self, env):
@@ -31,21 +35,24 @@ class SimulatorWrapper(gym.Wrapper):
     def __setstate__(self, state):
         self.__dict__.update(state)
 
-    def save_checkpoint(self,):
+    def save_checkpoint(
+        self,
+    ):
         self._checkpoint = Checkpoint(
-            needs_reset = self._needs_reset,
-            env = copy.deepcopy(self._env)
+            needs_reset=self._needs_reset, env=copy.deepcopy(self._env)
         )
-    
+
         return self._checkpoint
-    
-    def load_checkpoint(self,):
+
+    def load_checkpoint(
+        self,
+    ):
         self._env = copy.deepcopy(self._checkpoint.env)
         self._needs_reset = self._checkpoint.needs_reset
 
     def step(self, action):
         if self._needs_reset:
-            raise ValueError('This model needs to be explicitly reset.')
+            raise ValueError("This model needs to be explicitly reset.")
         obs, r, d, info = self._env.step(action)
 
         self._needs_reset = d
@@ -58,4 +65,3 @@ class SimulatorWrapper(gym.Wrapper):
     @property
     def needs_reset(self):
         return self._needs_reset
-

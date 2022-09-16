@@ -1,14 +1,16 @@
-import re
 import os
 import random
-from cv2 import log
+import re
+
 import gym
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from cv2 import log
 from torch import distributions as pyd
 from torch.distributions.utils import _standard_normal
+
 try:
     import cPickle as pickle
 except ModuleNotFoundError:
@@ -30,13 +32,15 @@ def set_requires_grad(net, value):
 
 # credit to https://github.com/Xingyu-Lin/mbpo_pytorch/blob/main/model.py#L64
 def truncated_normal(t, mean=0.0, std=1.0):
-    """ Re-drewing the values rather than clipping them."""
+    """Re-drewing the values rather than clipping them."""
     torch.nn.init.normal_(t, mean=mean, std=std)
     while True:
-      cond = torch.logical_or(t < mean - 2*std, t > mean + 2*std)
-      if not torch.sum(cond):
-        break
-      t = torch.where(cond, torch.nn.init.normal_(torch.ones_like(t), mean=mean, std=std), t)
+        cond = torch.logical_or(t < mean - 2 * std, t > mean + 2 * std)
+        if not torch.sum(cond):
+            break
+        t = torch.where(
+            cond, torch.nn.init.normal_(torch.ones_like(t), mean=mean, std=std), t
+        )
     return t
 
 
@@ -45,7 +49,7 @@ def linear_schedule(schdl, step):
     try:
         return float(schdl)
     except ValueError:
-        match = re.match(r'linear\((.+),(.+),(.+)\)', schdl)
+        match = re.match(r"linear\((.+),(.+),(.+)\)", schdl)
         if match:
             init, final, duration = [float(g) for g in match.groups()]
             mix = np.clip(step / duration, 0.0, 1.0)
@@ -53,16 +57,16 @@ def linear_schedule(schdl, step):
     raise NotImplementedError(schdl)
 
 
-def save_object(obj, filename): 
-    with open(filename, 'wb') as f:
+def save_object(obj, filename):
+    with open(filename, "wb") as f:
         pickle.dump(obj, f, pickle.HIGHEST_PROTOCOL)
 
 
 def load_object(filename):
-    with open(filename, 'rb') as f:
+    with open(filename, "rb") as f:
         data = pickle.load(f)
     return data
-    
+
 
 def make_dir(dir_path):
     """Create directory if it does not already exist."""
@@ -73,7 +77,7 @@ def make_dir(dir_path):
     return dir_path
 
 
-def soft_clamp(x : torch.Tensor, _min=None, _max=None):
+def soft_clamp(x: torch.Tensor, _min=None, _max=None):
     # clamp tensor values while mataining the gradient
     if _max is not None:
         x = _max - F.softplus(_max - x)
@@ -83,54 +87,69 @@ def soft_clamp(x : torch.Tensor, _min=None, _max=None):
 
 
 class StandardScaler:
-    """ Used to calculate mean, std and normalize data. """
+    """Used to calculate mean, std and normalize data."""
+
     def __init__(self):
-        self.mean = 0.
-        self.std = 1.
+        self.mean = 0.0
+        self.std = 1.0
 
     def fit(self, data):
-        """ Calculate mean and std for given data."""
-        assert isinstance(data, torch.Tensor), f"data must be in torch.Tensor, while got {data.dtype}."
-        self.mean = data.mean(0, keepdim=True) # calculate mean among batch, shape [1, x_dim]
+        """Calculate mean and std for given data."""
+        assert isinstance(
+            data, torch.Tensor
+        ), f"data must be in torch.Tensor, while got {data.dtype}."
+        self.mean = data.mean(
+            0, keepdim=True
+        )  # calculate mean among batch, shape [1, x_dim]
         self.std = data.std(0, keepdim=True)
         self.std[self.std < 1e-12] = 1.0
 
     def transform(self, data):
-        """ Normalization. """
-        assert isinstance(self.mean, torch.Tensor), "Call fit() before using transform()."
-        assert data.ndim == self.mean.ndim, "mean and data should have the same dimensions."
+        """Normalization."""
+        assert isinstance(
+            self.mean, torch.Tensor
+        ), "Call fit() before using transform()."
+        assert (
+            data.ndim == self.mean.ndim
+        ), "mean and data should have the same dimensions."
 
-        if data.device.type == 'cuda':
-            mean, std = self.mean.to("cuda"), self.mean.to('cuda')
+        if data.device.type == "cuda":
+            mean, std = self.mean.to("cuda"), self.mean.to("cuda")
         else:
             mean, std = self.mean, self.std
         return (data - mean) / std
 
     def inverse_transform(self, data):
-        assert isinstance(self.mean, torch.Tensor), "Call fit() before using inverse_transform()."
-        assert data.ndim == self.mean.ndim, "mean and data should have the same dimensions."
-        
-        if data.device.type == 'cuda':
-            mean, std = self.mean.to("cuda"), self.mean.to('cuda')
+        assert isinstance(
+            self.mean, torch.Tensor
+        ), "Call fit() before using inverse_transform()."
+        assert (
+            data.ndim == self.mean.ndim
+        ), "mean and data should have the same dimensions."
+
+        if data.device.type == "cuda":
+            mean, std = self.mean.to("cuda"), self.mean.to("cuda")
         else:
             mean, std = self.mean, self.std
         return data * std + mean
-    
+
 
 class NormalizeImg(nn.Module):
     """Module that divides (pixel) observations by 255. and minus 0.5, the value range should be [-0.5, 0.5]."""
+
     def __init__(self):
         super().__init__()
 
     def forward(self, x):
-        return x.div(255.) - 0.5
+        return x.div(255.0) - 0.5
 
 
 class Flatten(nn.Module):
     """Module that flattens its input to a (batched) vector."""
+
     def __init__(self):
         super().__init__()
-        
+
     def forward(self, x):
         return x.view(x.size(0), -1)
 

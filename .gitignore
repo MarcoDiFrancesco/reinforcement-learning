@@ -1,6 +1,2 @@
 wandb/
-# *.mp4
-# *.json
-# *.pkl
-# *.
 results/

@@ -1,7 +1,7 @@
+import numpy as np
 import torch
 import torch.nn.functional as F
 from torch.distributions import Categorical
-import numpy as np
 
 
 class Policy(torch.nn.Module):
@@ -97,10 +97,13 @@ class Agent(object):
             next_values = next_values.squeeze()
         gaes = torch.zeros(1)
         timesteps = len(self.rewards)
-        for t in range(timesteps-1, -1, -1):
-            deltas = self.rewards[t] + self.gamma * next_values[t] *\
-                     (1-self.dones[t]) - values[t]
-            gaes = deltas + self.gamma*self.tau*(1-self.dones[t])*gaes
+        for t in range(timesteps - 1, -1, -1):
+            deltas = (
+                self.rewards[t]
+                + self.gamma * next_values[t] * (1 - self.dones[t])
+                - values[t]
+            )
+            gaes = deltas + self.gamma * self.tau * (1 - self.dones[t]) * gaes
             returns.append(gaes + values[t])
 
         return torch.Tensor(list(reversed(returns)))
@@ -110,36 +113,42 @@ class Agent(object):
         returns = self.compute_returns()
         while len(indices) >= self.batch_size:
             # Sample a minibatch
-            batch_indices = np.random.choice(indices, self.batch_size,
-                    replace=False)
+            batch_indices = np.random.choice(indices, self.batch_size, replace=False)
 
             # Do the update
-            self.ppo_update(self.states[batch_indices], self.actions[batch_indices],
-                self.rewards[batch_indices], self.next_states[batch_indices],
-                self.dones[batch_indices], self.action_log_probs[batch_indices],
-                returns[batch_indices])
+            self.ppo_update(
+                self.states[batch_indices],
+                self.actions[batch_indices],
+                self.rewards[batch_indices],
+                self.next_states[batch_indices],
+                self.dones[batch_indices],
+                self.action_log_probs[batch_indices],
+                returns[batch_indices],
+            )
 
             # Drop the batch indices
             indices = [i for i in indices if i not in batch_indices]
 
-    def ppo_update(self, states, actions, rewards, next_states, dones, old_log_probs, targets):
+    def ppo_update(
+        self, states, actions, rewards, next_states, dones, old_log_probs, targets
+    ):
         action_dists, values = self.policy(states)
         values = values.squeeze()
         new_action_probs = action_dists.log_prob(actions)
         ratio = torch.exp(new_action_probs - old_log_probs)
-        clipped_ratio = torch.clamp(ratio, 1-self.clip, 1+self.clip)
+        clipped_ratio = torch.clamp(ratio, 1 - self.clip, 1 + self.clip)
 
         advantages = targets - values
         advantages -= advantages.mean()
-        advantages /= advantages.std()+1e-8
+        advantages /= advantages.std() + 1e-8
         advantages = advantages.detach()
-        policy_objective = -torch.min(ratio*advantages, clipped_ratio*advantages)
+        policy_objective = -torch.min(ratio * advantages, clipped_ratio * advantages)
 
         value_loss = F.smooth_l1_loss(values, targets, reduction="mean")
 
         policy_objective = policy_objective.mean()
         entropy = action_dists.entropy().mean()
-        loss = policy_objective + 0.5*value_loss - 0.01*entropy
+        loss = policy_objective + 0.5 * value_loss - 0.01 * entropy
 
         self.optimizer.zero_grad()
         loss.backward()
@@ -163,4 +172,3 @@ class Agent(object):
         self.rewards.append(torch.Tensor([reward]).float())
         self.dones.append(torch.Tensor([done]))
         self.next_states.append(torch.from_numpy(next_state).float())
-

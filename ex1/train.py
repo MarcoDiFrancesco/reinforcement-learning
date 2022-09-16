@@ -1,21 +1,21 @@
-import sys, os
+import os
+import sys
 
 sys.path.insert(0, os.path.abspath(".."))
 os.environ["SDL_VIDEODRIVER"] = "dummy"  # for pygame rendering
 import time
+import warnings
 from pathlib import Path
 
-import torch
 import gym
 import hydra
-import wandb
-
 import reacher
+import torch
+import wandb
 from agent import Agent, Policy
+
 from common import helper as h
 from common import logger as logger
-
-import warnings
 
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
