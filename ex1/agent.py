@@ -158,6 +158,10 @@ class Agent(object):
         x = torch.from_numpy(observation).float().to(self.train_device)
         action_dist, _ = self.policy.forward(x)
         if evaluation:
+            # action_dist.probs
+            #     [0.2042, 0.1995, 0.2051, 0.1956, 0.1955]
+            # action_dist.probs.argmax()
+            #     2
             action = action_dist.probs.argmax()
         else:
             action = action_dist.sample()

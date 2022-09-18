@@ -22,7 +22,7 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 
 # Policy training function
-def train(agent, env, min_update_samples=2000):
+def train(agent: Agent, env, min_update_samples=2000):
     # Run actual training
     reward_sum, timesteps, num_updates = 0, 0, 0
     done = False
@@ -111,6 +111,7 @@ def main(cfg):
     if cfg.use_wandb and not cfg.testing:
         wandb.init(
             project="rl_aalto",
+            entity="marcodifrancesco",
             name=f"{cfg.exp_name}-{cfg.env_name}-{str(cfg.seed)}-{str(run_id)}",
             group=f"{cfg.exp_name}-{cfg.env_name}",
             config=cfg,

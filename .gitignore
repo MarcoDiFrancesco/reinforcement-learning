@@ -1,2 +1,5 @@
 wandb/
 results/
+.venv/
+*.pyc
+.vscode/

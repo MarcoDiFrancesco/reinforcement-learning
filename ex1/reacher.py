@@ -48,6 +48,9 @@ class ReacherEnv(core.Env):
         self.max_episode_steps = max_episode_steps
         self._counter = 0
 
+        # Used to undestand bahaviour
+        self.prev_state_min, self.prev_state_max = 0, 0
+
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
         return [seed]
@@ -63,12 +66,19 @@ class ReacherEnv(core.Env):
         return self.state
 
     def get_reward(self, prev_state, action, next_state):
-        # TODO: Task 3: Implement and test two reward functions
-        ########## Your code starts here ##########
-        # A dummy reward, replace it with yours.
-        return 1
+        # Task 3.1
+        # self.prev_state_min = min(self.prev_state_min, prev_state[0])
+        # self.prev_state_max = max(self.prev_state_max, prev_state[0])
+        # print("ACTION/PREV/NEXT", action, prev_state, next_state)
+        # print("MIN/MAX", self.prev_state_min, self.prev_state_max)
+        # return prev_state[0] - next_state[0]
 
-        ########## Your codes end here ##########
+        # Task 3.2
+        x, y = self.get_cartesian_pos(next_state)
+        distance = np.sqrt((1 - x) ** 2 + (1 - y) ** 2)
+        # print("LOG", self.get_cartesian_pos(prev_state), self.get_cartesian_pos(next_state), distance)
+        # print("ACTION/PREV/NEXT", action, prev_state, next_state)
+        return -distance
 
     def get_cartesian_pos(self, state):
         ee_pos = np.zeros(2)
