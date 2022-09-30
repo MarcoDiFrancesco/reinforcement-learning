@@ -1,5 +1,9 @@
 wandb/
-results/
 .venv/
 *.pyc
 .vscode/
+
+# Model output
+results/
+*.gif
+*.pkl
