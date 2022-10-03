@@ -55,8 +55,28 @@ def get_action(state, q_axis, q_table, epsilon=0.0):
 
     # TODO: Implement epsilon-greedy
     ########## Your code starts here ##########
-    pass
+    import random
 
+    # print("STATE", state)
+    # print("Q_AXIS", q_axis)
+    # print("Q_TABLE", q_table.shape)
+    # print("EPSILON", epsilon)
+    table_idx = get_table_idx(state, q_axis)
+    # print("TABLE_IDX", table_idx)
+
+    q_vals = q_table[table_idx]
+
+    # | Num | Action                 |
+    # |-----|------------------------|
+    # | 0   | Push cart to the left  |
+    # | 1   | Push cart to the right |
+    if random.random() > epsilon:
+        # Best action
+        action = q_vals.argmax()
+    else:
+        # Not the best action
+        action = np.random.randint(0, 2)
+    return action
     ########## Your code ends here #########
 
 
@@ -68,6 +88,40 @@ def update_q_value(
     old_table_idx = get_table_idx(old_state, q_axis)  # idx of q(s_old, *)
     new_table_idx = get_table_idx(new_state, q_axis)  # idx of q(s_new, *)
     ########## Your code starts here ##########
+    # e.g. [ 0.01898216 -0.19557579  0.01329001  0.25438365]
+    # print("OLD_STATE", old_state)
+    # e.g. 1
+    # print("ACTION", action)
+    # print("NEW_STATE", new_state)
+    # print("GAMMA", gamma)
+    # print("REWARD", reward)
+    # print("DONE", done)
+    # print("ALPHA", alpha)
+    # print("Q_AXIS", q_axis)
+    # print("Q_TABLE", q_table)
+    # e.g. (7, 5, 10, 12)
+    # print("OLD_TABLE_IDX", old_table_idx)
+    # e.g. (7, 5, 11, 12)
+    # print("NEW_TABLE_IDX", new_table_idx)
+
+    # q_table[new_table_idx] -> [0. 0.]
+    # max_q -> 1
+    max_q = q_table[new_table_idx].max()
+    # print("MAX_Q", q_table[new_table_idx], max_q)
+
+    if done:
+        # print("DONE returning 0")
+        delta = 0
+        # Set both actions to 0
+        q_table[old_table_idx] = 0
+
+    # e.g. [14.47, 13.12]
+    # print("PRE", q_table[old_table_idx])
+    q_table[old_table_idx][action] = q_table[old_table_idx][action] + alpha * (
+        reward + (gamma * max_q) - q_table[old_table_idx][action]
+    )
+    # e.g. [14.51, 13.12]
+    # print("POST", q_table[old_table_idx])
 
     ########### Your code ends here ##########
     return q_table
@@ -88,6 +142,7 @@ def main(cfg):
     if cfg.use_wandb:
         wandb.init(
             project="rl_aalto",
+            entity="marcodifrancesco",
             name=f"{cfg.exp_name}-{cfg.env_name}-{str(cfg.seed)}-{run_id}",
             group=f"{cfg.exp_name}-{cfg.env_name}",
             config=cfg,
