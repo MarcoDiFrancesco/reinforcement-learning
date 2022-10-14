@@ -45,6 +45,7 @@ def main(cfg):
         )
     # get number of actions and state dimensions
     n_actions = env.action_space.n
+    print("ACTION SPACE", n)
     state_shape = env.observation_space.shape
 
     # init agent

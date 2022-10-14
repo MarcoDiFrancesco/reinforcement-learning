@@ -44,7 +44,6 @@ class DQNAgent(object):
     ):
         self.n_actions = n_actions
         self.state_dim = state_shape[0]
-
         self.policy_net = mlp(self.state_dim, hidden_dims, n_actions).to(device)
         self.target_net = copy.deepcopy(self.policy_net)
         self.target_net.eval()
@@ -76,19 +75,30 @@ class DQNAgent(object):
         #        5. You can go throught the PyTorch Tutorial given on MyCourses if you are not familiar with it.
 
         # calculate the q(s,a)
-        qs = 0
+        qs = self.policy_net(batch.state)
+        qs = torch.gather(qs, dim=1, index=batch.action.type(torch.int64))
+
+        target_next = self.target_net(batch.next_state)
+        target_max_val, target_max_idx = target_next.max(dim=1)
+        target_max_val = target_max_val.unsqueeze(1)
 
         # calculate q target (check q-learning)
-        q_tar = 0
+        q_tar = batch.reward + batch.not_done * self.gamma * target_max_val
+
+        # Detach q-target
+        q_tar = q_tar.detach()
 
         # calculate the loss
-        loss = 0
+        loss = ((qs - q_tar) ** 2).sum() * 0.5
 
         self.optimizer.zero_grad()
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(
+            self.policy_net.parameters(), self.grad_clip_norm
+        )
         # clip grad norm and perform the optimization step
+        self.optimizer.step()
 
-        pass
         ########## You code ends here #########
 
         # update the target network
@@ -102,10 +112,16 @@ class DQNAgent(object):
 
     @torch.no_grad()
     def get_action(self, state, epsilon=0.05):
-        # TODO:  Task 3: implement epsilon-greedy action selection
+        # Task 3: implement epsilon-greedy action selection
         ########## You code starts here #########
-        pass
-
+        if random.random() > epsilon:
+            state = torch.Tensor(state).to(device)
+            res = self.policy_net(state)
+            action = res.argmax()
+        else:
+            action = np.random.choice(np.arange(self.n_actions))
+        action = action.item()
+        return action
         ########## You code ends here #########
 
     def save(self, fp):

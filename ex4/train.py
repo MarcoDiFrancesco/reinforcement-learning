@@ -93,6 +93,7 @@ def main(cfg):
             if (
                 ep < cfg.random_episodes
             ):  # in the first #random_episodes, collect random trajectories
+                # print("RANDOM TRAJ", env_step, env.action_space, env.action_space.sample())
                 action = env.action_space.sample()
             else:
                 # Select and perform an action

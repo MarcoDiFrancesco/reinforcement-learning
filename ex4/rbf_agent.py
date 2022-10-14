@@ -54,25 +54,41 @@ class RBFAgent(object):
 
     def featurize(self, state):
         """Map state to a higher dimension for better representation."""
+        # e.g. (1000, 4)
         if len(state.shape) == 1:
             state = state.reshape(1, -1)
 
-        # TODO: Task 1, choose which feature to use.
         # Manual features, Task 1a
-        return np.concatenate((state, np.abs(state)), axis=1)
+        # e.g. (1000, 8)
+        # return np.concatenate((state, np.abs(state)), axis=1)
 
         # RBF features, Task 1b
         # map a state to a higher dimension (100+80+50)
-        # return self.featurizer.transform(self.scaler.transform(state))
+        # e.g. (1000, 230)
+        return self.featurizer.transform(self.scaler.transform(state))
 
-    def get_action(self, state, epsilon=0.0):
-        # TODO: Task 1: Implement epsilon-greedy policy
+    def get_action(self, state: np.ndarray, epsilon=0.0):
         ########## Your code starts here ##########
+        import random
+
         # Hints:
         # 1. self.q_functions is a list which defines a q function for each action dimension
         # 2. for each q function, use predict(feature) to obtain the q value
-        pass
 
+        state = self.featurize(state)
+
+        actions = np.zeros(self.num_actions) + np.inf
+        for idx, regressor in enumerate(self.q_functions):
+            # e.g. regressor: SGDRegressor(learning_rate='constant', max_iter=500)
+            # e.g. regressor.predict: Real val, e.g. 0.923 or 1.125 or 1.573 or 2.045
+            actions[idx] = regressor.predict(state)
+
+        if random.random() > epsilon:
+            a = actions.argmax()
+        else:
+            # Get random idx
+            a = np.random.choice(np.arange(actions.size))
+        return a
         ########## Your code ends here #########
 
     def _to_squeezed_np(self, batch: Batch) -> Batch:
@@ -96,7 +112,6 @@ class RBFAgent(object):
         # we first squeeze dim and then covert it to Numpy array.
         batch = self._to_squeezed_np(batch)
 
-        # TODO: Task 1, update q_functions
         ########## You code starts here #########
         # Hints:
         # 1. featurize the state and next_state
@@ -105,10 +120,57 @@ class RBFAgent(object):
         #    for each q function, use q.predict(featurized_state) to obtain the q value
         # 4. remember to use not_done to mask out the q values at terminal states (treat them as 0)
 
-        # featurize the state and next_state
-        f_state = 0
-        f_next_state = 0
-        q_tar = 0
+        f_state = self.featurize(batch.state)
+        f_next_state = self.featurize(batch.next_state)
+
+        # q target
+        q_tar = np.zeros(len(batch.state)) - np.inf
+        # For each step in the batch, e.g. 14 steps
+        for idx, (state, action, next_state, not_done, reward) in enumerate(
+            zip(
+                batch.state,
+                batch.action,
+                batch.next_state,
+                batch.not_done,
+                batch.reward,
+            )
+        ):
+            # assert action == int(
+            #     action
+            # ), "Use 'action = math.ceil(action)' instead to get 1.8 -> 2"
+            # # e.g. 1.8 -> 1
+            # action = int(action)
+
+            # TODO states vs next_states: undestand why from formula is s+1, from intuition we want
+            # to lean the q-value of the current state (taken from f_state[idx])
+            # from slack: ... just use the reward, next_state, not_done from the batch
+            f_next_state_for = self.featurize(next_state)
+            # Q-values of state s+1
+            q_value_new = [
+                regressor.predict(f_next_state_for).item()
+                for regressor in self.q_functions
+            ]
+
+            if not_done:
+                # Batch target
+                b_target = reward + (self.gamma * max(q_value_new))
+                # one-item list to float
+                b_target = b_target.item()
+            else:
+                b_target = reward
+
+            q_tar[idx] = b_target
+
+            # print(
+            #     f"""BATCH,
+            #     STATE: {state}
+            #     ACTION: {action}
+            #     NEXT_STATE: {next_state}
+            #     NOT_DONE: {not_done}
+            #     REWARD: {reward}
+            #     TARGET: {b_target}
+            #     """
+            # )
 
         ########## You code ends here #########
         # Get new weights for each action separately
