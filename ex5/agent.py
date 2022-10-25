@@ -34,11 +34,12 @@ class Policy(nn.Module):
             layer_init(nn.Linear(64, action_dim), std=0.01),
         )
 
-        # TODO: Task 1: Implement actor_logstd as a torch tensor. Hint: when creating the torch tensor, remember to set the parameter device=device
-        #   so the tensor is stored correctly on CUDA (if applicable)
-        # TODO: Task 2: Implement actor_logstd as a learnable parameter
-        # Use log of std to make sure std doesn't become negative during training
-        self.actor_logstd = 0
+        # Task 1: Implement actor_logstd as a torch tensor. Hint: when creating the torch tensor,
+        #       remember to set the parameter device=device so the tensor is stored correctly on CUDA (if applicable)
+        self.actor_logstd = torch.Tensor([0.0]).to(device)
+        # Task 2: Implement actor_logstd as a learnable parameter
+        #       Use log of std to make sure std doesn't become negative during training
+        self.actor_logstd = torch.nn.Parameter(self.actor_logstd)
 
     # Do a forward pass to map state to action
     def forward(self, state):
@@ -51,8 +52,8 @@ class Policy(nn.Module):
         # Exponentiate the log std to get actual std
         action_std = torch.exp(action_logstd)
 
-        # TODO: Task 1: Create a Normal distribution with mean of 'action_mean' and standard deviation of 'action_logstd', and return the distribution
-        probs = 0
+        # Task 1: Create a Normal distribution with mean of 'action_mean' and standard deviation of 'action_logstd', and return the distribution
+        probs = Normal(action_mean, action_std)
 
         return probs
 
@@ -74,27 +75,28 @@ class PG(object):
         self.action_probs = []
         self.rewards = []
 
-    def update(
-        self,
-    ):
+    def update(self):
 
         # Prepare dataset used to update policy
-        action_probs = (
-            torch.stack(self.action_probs, dim=0).to(device).squeeze(-1)
-        )  # shape: [batch_size,]
-        rewards = (
-            torch.stack(self.rewards, dim=0).to(device).squeeze(-1)
-        )  # shape [batch_size,]
-        self.action_probs, self.rewards = [], []  # clean buffers
+        # shape: [batch_size,]
+        action_probs = torch.stack(self.action_probs, dim=0).to(device).squeeze(-1)
+        # shape [batch_size,]
+        rewards = torch.stack(self.rewards, dim=0).to(device).squeeze(-1)
+        # clean buffers
+        self.action_probs, self.rewards = [], []
 
-        # TODO: Task 1: Implement the policy gradient
         ########## Your code starts here. ##########
-        # Hints:
+        baseline = 0
         #   1. compute discounted rewards (use the discount_rewards function offered in common.helper)
+        disc_rew = h.discount_rewards(rewards, self.gamma)
+        disc_rew = (disc_rew - disc_rew.mean()) / (disc_rew.std())
         #   2. compute the policy gradient loss
-        #   3. update the parameters (backpropagate gradients, do the optimizer step, empty optimizer gradients afterwards so that gradients don't accumulate over updates)
-        pass
-
+        loss = -torch.mean((disc_rew - baseline) * action_probs.squeeze())
+        #   3. update the parameters (backpropagate gradients, do the optimizer step, empty optimizer
+        #      gradients afterwards so that gradients don't accumulate over updates)
+        loss.backward()
+        self.optimizer.step()
+        self.optimizer.zero_grad()
         ########## Your code ends here. ##########
 
         # if you want to log something in wandb, you can put them inside the {}, otherwise, just leave it empty.
@@ -110,14 +112,22 @@ class PG(object):
         # Convert observation to a torch tensor
         x = torch.from_numpy(observation).float().to(device)
 
-        # TODO: Task 1: Calculate action and its log_prob
+        # Task 1: Calculate action and its log_prob
         ########## Your code starts here. ###########
         # Hint:
         #   1. when evaluation=True, return mean, otherwise return samples from the distribution created in self.policy.forward() function.
         #   2. notice the shape of action and act_logprob.
 
-        action = 0
-        act_logprob = 0
+        norm_dist = self.policy.forward(x)
+        if evaluation:
+            action = norm_dist.mean()
+        else:
+            action = norm_dist.sample()
+
+        act_logprob = norm_dist.log_prob(action)
+
+        # print("MEAN", norm_dist.mean, "SAMPLE", norm_dist.sample())
+        # print("ACTION", action, "act_logprob", act_logprob)
 
         ########## Your code ends here. ##########
 

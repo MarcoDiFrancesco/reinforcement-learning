@@ -9,6 +9,7 @@ from pathlib import Path
 
 import gym
 import hydra
+import numpy as np
 import torch
 import wandb
 
@@ -25,7 +26,7 @@ def to_numpy(tensor):
     return tensor.squeeze(0).cpu().numpy()
 
 
-def train(agent, env):
+def train(agent: PG, env):
     # Policy training function
 
     # Reset the environment and observe the initial state
@@ -33,17 +34,20 @@ def train(agent, env):
     obs = env.reset()
 
     while not done:
-        # TODO: Task 1: finish the train loop, including
-        #           1. Call agent.get_action to get action and log prob of the action
-        #           2. Call env.step with the action (note: you need to convert the action into a numpy array -- use the function to_numpy for this)
-        #              (Steps 1. and 2. you can also find from the 'test' function below)
-        #           3. Store the log prob of action and reward by calling agent.record
-        #           4. Update reward_sum by adding the reward received from env.step, and increase timesteps by one
-        #           5. Use the observation you receive from env.step to call agent.get_action for the next timestep
-
         ########### Your code starts here ###########
-        pass
+        #  1. Call agent.get_action to get action and log prob of the action
+        #  2. Call env.step with the action (note: you need to convert the action into a numpy array -- use the function to_numpy for this)
+        #  (Steps 1. and 2. you can also find from the 'test' function below)
+        action, act_logprob = agent.get_action(obs)
+        # 5. Use the observation you receive from env.step to call agent.get_action for the next timestep
+        obs, reward, done, info = env.step(to_numpy(action))
 
+        # 3. Store the log prob of action and reward by calling agent.record
+        agent.record(act_logprob, reward)
+
+        # 4. Update reward_sum by adding the reward received from env.step, and increase timesteps by one
+        reward_sum += reward
+        timesteps += 1
         ########## Your codes ends here. ##########
 
     # Update the policy after one episode
@@ -62,7 +66,6 @@ def train(agent, env):
 # Function to test a trained policy
 @torch.no_grad()
 def test(agent, env, num_episodes=10):
-
     total_test_reward = 0
     for ep in range(num_episodes):
         obs, done = env.reset(), False
@@ -111,6 +114,7 @@ def main(cfg):
     if cfg.use_wandb and not cfg.testing:
         wandb.init(
             project="rl_aalto",
+            entity="marcodifrancesco",
             name=f"{cfg.exp_name}-{cfg.env_name}-{str(cfg.seed)}-{str(cfg.run_id)}",
             group=f"{cfg.exp_name}-{cfg.env_name}",
             config=cfg,
@@ -143,6 +147,16 @@ def main(cfg):
     action_dim = env.action_space.shape[0]
 
     # Initialise the policy gradient agent
+    print(
+        "Initializing with parameters state_dim:",
+        state_dim,
+        "action_dim",
+        action_dim,
+        "cfg.lr",
+        cfg.lr,
+        "cfg.gamma",
+        cfg.gamma,
+    )
     agent = PG(state_dim, action_dim, cfg.lr, cfg.gamma)
 
     if not cfg.testing:  # training
