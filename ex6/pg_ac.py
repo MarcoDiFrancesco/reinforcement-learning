@@ -29,9 +29,10 @@ class Policy(nn.Module):
             nn.Tanh(),
             layer_init(nn.Linear(64, action_dim), std=0.01),
         )
-        # TODO: Task 1: Implement actor_logstd as a learnable parameter
+        # Task 1: Implement actor_logstd as a learnable parameter
         # Use log of std to make sure std doesn't become negative during training
-        self.actor_logstd = 0
+        self.actor_logstd = torch.Tensor([[0.0]]).to(device)
+        self.actor_logstd = torch.nn.Parameter(self.actor_logstd)
 
     def forward(self, state):
         # Get mean of a Normal distribution (the output of the neural network)
@@ -43,8 +44,8 @@ class Policy(nn.Module):
         # Exponentiate the log std to get actual std
         action_std = torch.exp(action_logstd)
 
-        # TODO: Task 1: Create a Normal distribution with mean of 'action_mean' and standard deviation of 'action_logstd', and return the distribution
-        probs = 0
+        # Task 1: Create a Normal distribution with mean of 'action_mean' and standard deviation of 'action_logstd', and return the distribution
+        probs = Normal(action_mean, action_std)
 
         return probs
 
@@ -82,9 +83,7 @@ class PG(object):
         self.dones = []
         self.next_states = []
 
-    def update(
-        self,
-    ):
+    def update(self):
         action_probs = torch.stack(self.action_probs, dim=0).to(device).squeeze(-1)
         rewards = torch.stack(self.rewards, dim=0).to(device).squeeze(-1)
         states = torch.stack(self.states, dim=0).to(device).squeeze(-1)
@@ -99,13 +98,38 @@ class PG(object):
             [],
         )
 
-        # TODO: Task 1
+        # Task 1
         ########## Your code starts here. ##########
+        # action_probs: tensor([[-4.9391], [-0.9320], [-0.9878]])
+        # rewards: tensor([1., 1., 1.])
+        # states: Size([3, 4]) - tensor([[-0.0171,  0.0374, -0.9457,  2.1420], ...)
+        # next_states: Size([3, 4]) - tensor([[-0.0171,  0.0374, -0.9457,  2.1420], ...)
+        # dones: tensor([0., 0., 1.])
+
         # Hints: 1. calculate the TD target as well as the MSE loss between the predicted value and the TD target
+        # Actor
+        with torch.no_grad():
+            not_dones = 1 - dones
+            td_target = rewards + self.gamma * self.value(next_states) * not_dones
+        value_loss = F.mse_loss(td_target.detach(), self.value(states))
+
+        # Critic
         #        2. calculate the policy loss (similar to ex5) with advantage calculated from the value function. Normalise
         #           the advantage to zero mean and unit variance.
-        #        3. update parameters of the policy and the value function jointly
+        with torch.no_grad():
+            # Advantage
+            adv = td_target - self.value(states)
+            # adv_norm: Size([24]) or Size([19]), tensor([-1.0160,  0.7055, -0.0833, ...]
+            adv_norm = (adv - adv.mean()) / adv.std()
+        policy_loss = torch.mean(-action_probs.squeeze() * adv_norm.detach())
 
+        # Loss: Actor + Critic
+        loss = value_loss + policy_loss
+
+        #        3. update parameters of the policy and the value function jointly
+        loss.backward()
+        self.optimizer.step()
+        self.optimizer.zero_grad()
         ########## Your code ends here. ##########
 
         # if you want to log something in wandb, you can put them inside the {}, otherwise, just leave it empty.
@@ -117,17 +141,29 @@ class PG(object):
             observation = observation[None]  # add the batch dimension
         x = torch.from_numpy(observation).float().to(device)
 
-        # TODO: Task 1
+        # Task 1
         ########## Your code starts here. ##########
         # Hints: 1. the self.policy returns a normal distribution, check the PyTorch document to see
         #           how to calculate the log_prob of an action and how to sample.
+
+        # x: tensor([[ 0.0020, -0.0057, -0.0058, -0.0096]])
+        # dist: tensor([[-2.8355]]) - Normal distribution of the model
+        dist = self.policy(x)
+
         #        2. if evaluation, return mean, otherwise, return a sample
+        if evaluation:
+            action = dist.mean()
+        else:
+            action = dist.sample()
+
+        # action: tensor([[-2.8355]])
+        # act_logprob: tensor([[-4.9391]]) - Probability that action was taken
+        act_logprob = dist.log_prob(action)
+
         #        3. the returned action and the act_logprob should be the torch.Tensors.
         #            Please always make sure the shape of variables is as you expected.
-
-        action = 0
-        act_logprob = 0
-
+        assert type(action) is torch.Tensor
+        assert type(act_logprob) is torch.Tensor
         ########## Your code ends here. ###########
 
         return action, act_logprob

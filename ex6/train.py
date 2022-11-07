@@ -119,6 +119,7 @@ def main(cfg):
     if cfg.use_wandb and not cfg.testing:
         wandb.init(
             project="rl_aalto",
+            entity="marcodifrancesco",
             name=f"{cfg.exp_name}-{cfg.env_name}-{str(cfg.seed)}-{str(cfg.run_id)}",
             group=f"{cfg.exp_name}-{cfg.env_name}",
             config=cfg,

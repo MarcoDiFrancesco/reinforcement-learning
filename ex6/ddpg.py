@@ -98,18 +98,40 @@ class DDPG(object):
         self.buffer_head = self.buffer_ptr
         return info
 
-    def _update(
-        self,
-    ):
+    def _update(self):
         batch = self.buffer.sample(self.batch_size, device=device)
 
-        # TODO: Task 2
+        # Task 2
         ########## Your code starts here. ##########
-        # Hints: 1. compute the Q target with the q_target and pi_target networks
-        #        2. compute the critic loss and update the q's parameters
-        #        3. compute actor loss and update the pi's parameters
-        #        4. update the target q and pi using h.soft_update_params() (See the DQN code)
+        state = batch.state
+        action = batch.action
+        next_state = batch.next_state
+        not_done = batch.not_done
+        reward = batch.reward
 
+        # Hints: 1. compute the Q target with the q_target and pi_target networks
+        next_action_pi = self.pi(next_state)
+        q_func_out = self.q_target(next_state, next_action_pi)
+        q_target = reward + self.gamma * q_func_out * not_done
+
+        #        2. compute the critic loss and update the q's parameters
+        self.q_optim.zero_grad()
+        value_loss = F.mse_loss(q_target.detach(), self.q(state, action))
+        value_loss.backward()
+        torch.nn.utils.clip_grad_norm_(list(self.q.parameters()), 1)
+        self.q_optim.step()
+
+        #        3. compute actor loss and update the pi's parameters
+        self.pi_optim.zero_grad()
+        pi_target = -self.q(batch.state, self.pi(batch.state))
+        pi_loss = pi_target.mean()
+        pi_loss.backward()
+        torch.nn.utils.clip_grad_norm_(list(self.pi.parameters()), 1)
+        self.pi_optim.step()
+
+        #        4. update the target q and pi using h.soft_update_params() (See the DQN code)
+        h.soft_update_params(self.q, self.q_target, self.tau)
+        h.soft_update_params(self.pi, self.pi_target, self.tau)
         ########## Your code ends here. ##########
 
         # if you want to log something in wandb, you can put them inside the {}, otherwise, just leave it empty.
@@ -130,13 +152,17 @@ class DDPG(object):
                 0.1 * self.max_action
             )  # the stddev of the expl_noise if not evaluation
 
-            # TODO: Task 2
+            # Task 2
             ########## Your code starts here. ##########
             # Use the policy to calculate the action to execute
             # if evaluation equals False, add normal noise to the action, where the std of the noise is expl_noise
             # Hint: Make sure the returned action's shape is correct.
-            # pass
-
+            # torch.Size([1, 17]) - tensor([[ 0.0471, -0.0923, -0.0743,  0.0241, ...]]]
+            action = self.pi(x)
+            if not evaluation:
+                # Add epsilon noise
+                dist = torch.distributions.Normal(0, expl_noise)
+                action += dist.sample([self.action_dim]).to(device)
             ########## Your code ends here. ##########
 
         return action, {}  # just return a positional value
