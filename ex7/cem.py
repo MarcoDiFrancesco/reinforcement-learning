@@ -9,6 +9,7 @@ import gym
 import numpy as np
 import torch
 from joblib import Parallel, delayed
+from torch.distributions import Normal
 
 from common.env import make_env
 from common.simulator import SimulatorWrapper
@@ -53,21 +54,33 @@ class CEM(object):
         if not t0 and hasattr(self, "_prev_mean"):
             mean[:-1] = copy.copy(self._prev_mean[1:])
 
-        with Parallel(
-            n_jobs=-1,
-        ) as parallel:  # we use joblib.Parallel to parallel the evaluation.
+        # we use joblib.Parallel to parallel the evaluation.
+        with Parallel(n_jobs=-1) as parallel:
             # Iterate CEM
             for _ in range(self.iteration):
                 # TODO: Task 1 Implement CEM
                 ########## Your code starts here. ##########
                 # Hints:
                 # 1. select actions, note plan horizon and number of samples and action dimensionality
+                dists = Normal(torch.Tensor(mean), torch.Tensor(std))
+                actions = dists.sample_n(self.num_samples).numpy()
+
                 # 2. evaluate actions by computing values for your actions
                 # use parallel(delayed(rollout_simulator)(model, action) for each sample
-                # 3. select top actions (elite actions) in samples (highest returns)
-                # 4. compute new mean and std, note that we used momentum for mean
+                res = parallel(
+                    (delayed(rollout_simulator))(model, actions[i])
+                    for i in range(self.num_samples)
+                )
+                # res e.g.: [0.0, 0.0, 0.0, ...]
 
-                _mean, _std = None, None  # change this line
+                # 3. select top actions (elite actions) in samples (highest returns)
+                res = np.array(res)
+                topk_idx = res.argsort()[-self.num_topk :][::-1]
+                # e.g. [49 12 22 21 20]
+
+                # 4. compute new mean and std, note that we used momentum for mean
+                _mean = np.mean(actions[topk_idx], axis=0)
+                _std = np.std(actions[topk_idx], axis=0)
                 mean, std = self.momentum * mean + (1.0 - self.momentum) * _mean, _std
 
         if self.keep_last_solution:
@@ -102,7 +115,6 @@ def rollout_simulator(model, traj):
     return G
 
 
-#%%
 if __name__ == "__main__":
     import argparse
 
@@ -116,7 +128,10 @@ if __name__ == "__main__":
 
         run_id = str(uuid.uuid4())
         wandb.init(
-            project="rl_aalto", name=f"ex7-CupCatch-{run_id}", group=f"ex7-CupCatch"
+            project="rl_aalto",
+            entity="marcodifrancesco",
+            name=f"ex7-CupCatch-{run_id}",
+            group=f"ex7-CupCatch",
         )
 
     env = make_env(env_name="cup-catch", seed=1, action_repeat=6)
@@ -137,7 +152,6 @@ if __name__ == "__main__":
         expl_noise=0.3,
     )
 
-    # %%
     obs, done, ep_reward, t = env.reset(), False, 0, 0
 
     while not done:
@@ -150,4 +164,3 @@ if __name__ == "__main__":
         t += 1
         if args.use_wandb:
             wandb.log({"Step": t, "Reward": reward, "Episode Reward": ep_reward})
-# %%

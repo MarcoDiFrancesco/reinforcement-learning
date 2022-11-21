@@ -55,8 +55,10 @@ class Node(object):
 
     def __init__(self, prior=1.0):
         self.reward: float = 0.0
+        # Visit counts N
         self.visit_count: int = 0
         self.terminal: bool = False
+        # P(s, a)
         self.prior: float = prior  # action prior
         self.total_value: float = 0.0  # cumulative value
         self.children: dict = {}  # children nodes, index is the action
@@ -67,13 +69,15 @@ class Node(object):
         for a, p in enumerate(prior):
             self.children[a] = Node(prior=p)
 
+    # Mean value Q(s, a)
     @property
-    def value(self):  # Q(s, a)
+    def value(self):
         """Returns the value of this node."""
         if self.visit_count:
             return self.total_value / self.visit_count
         return 0.0
 
+    # Sum over N
     @property
     def children_visits(self) -> np.ndarray:
         """Return array of visit counts of visited children."""
@@ -132,12 +136,22 @@ class MCTS(object):
             # Generate a trajectory.
             obs = None
             while node.children:
-                pass
-                # TODO
                 # 1. select action according to the search policy (puct: you should implement)
+                action = self.puct(node)
+                # e.g. action: 0
+
                 # 2. consider the children node according to the action
+                node = node.children[action]
+
                 # 3. execute the action and update information for new node ()
+                # Make step from Slack
+                obs, reward, terminal, _ = self.env.step(action)
+                # "Update node.reward and node.terminal" from Slack
+                node.reward = reward
+                node.terminal = terminal
+
                 # 4. append new node to the trajectory
+                trajectory.append(node)
 
             if obs is None:
                 raise ValueError("Generated an empty rollout; this should not happen.")
@@ -160,9 +174,14 @@ class MCTS(object):
             while trajectory:
                 # Pop off the latest node in the trajectory.
                 node = trajectory.pop()
-                # TODO
+
                 # 1 compute discounted return the node
+                ret = node.reward + ret * self.discount
+
                 # 2.update node (total_value, visit_count)
+                node.total_value += ret
+                node.visit_count += 1
+
         return root
 
     def bfs(self, node: Node):
@@ -170,13 +189,21 @@ class MCTS(object):
         visit_counts = np.array([c.visit_count for c in node.children.values()])
         return self._argmax(-visit_counts)
 
-    def puct(self, node: Node, ucb_scaling: float = 1.0):
-        ## TODO Implement PUCT search policy policy search
+    def puct(self, node: Node, ucb_scaling: float = 1.0) -> int:
+        # Implement PUCT search policy policy search
         # Hint: compute value, prior (probs), and visit ratio for each child node
         # change these values!
         value_scores = np.zeros(self.num_actions)
         priors = np.zeros(self.num_actions)
         visit_ratios = np.zeros(self.num_actions)
+
+        for idx, child in node.children.items():
+            value_scores[idx] = child.value
+            priors[idx] = child.prior
+            visit_ratios[idx] = np.sqrt(node.children_visits.sum()) / (
+                1 + child.visit_count
+            )
+
         # Combine.
         puct_scores = value_scores + ucb_scaling * priors * visit_ratios
         return self._argmax(puct_scores)
@@ -248,12 +275,31 @@ class AZAgent(object):
 
     def update(self, data):
         """Do a gradient update step on the loss."""
-        ##TODO Update the actor and critic
+        # Update the actor and critic
         # 1. Use TD learning to update value
-        # 2. Use self.criterion as loss function for policy network (actor)
         # Hint: state=data.state, action=data.action, ..., probs= data.extra['pi'],
         # See buffer
-        loss = 0
+        state, action, next_state, reward, not_done, extra = data
+        # Probs is the action distribution you want the neural network to mimic
+        probs = extra["pi"]
+
+        # Critic - Value function Q
+        with torch.no_grad():
+            td_target = reward + self.gamma * self.value(next_state) * not_done
+
+        value_loss = F.mse_loss(td_target, self.value(state))
+
+        # Actor - Policy function π
+        # 2. Use self.criterion as loss function for policy network (actor)
+        policy_loss = torch.mean(self.criterion(self.policy(state), probs))
+
+        # Loss: Actor + Critic
+        loss = value_loss + policy_loss
+
+        loss.backward()
+        self.optimizer.step()
+        self.optimizer.zero_grad()
+
         return {"loss": loss.item()}
 
 
@@ -270,7 +316,10 @@ if __name__ == "__main__":
 
         run_id = str(uuid.uuid4())
         wandb.init(
-            project="rl_aalto", name=f"ex7-DeepSea-{run_id}", group=f"ex7-DeepSea"
+            project="rl_aalto",
+            entity="marcodifrancesco",
+            name=f"ex7-DeepSea-{run_id}",
+            group=f"ex7-DeepSea",
         )
     # A wrapper to align the api of the environment, you can ignore it.
     # We will include this wrapper in the /common next year.
