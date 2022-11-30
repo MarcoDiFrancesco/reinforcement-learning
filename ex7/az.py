@@ -138,7 +138,8 @@ class MCTS(object):
             while node.children:
                 # 1. select action according to the search policy (puct: you should implement)
                 action = self.puct(node)
-                # e.g. action: 0
+                # Task 2.4. Greedy
+                action = node.children_values.argmax()
 
                 # 2. consider the children node according to the action
                 node = node.children[action]
@@ -206,6 +207,8 @@ class MCTS(object):
 
         # Combine.
         puct_scores = value_scores + ucb_scaling * priors * visit_ratios
+        # Greedy policy
+        puct_scores = value_scores
         return self._argmax(puct_scores)
 
     def _argmax(self, values: np.ndarray):
