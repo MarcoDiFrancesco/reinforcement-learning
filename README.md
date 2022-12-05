@@ -14,3 +14,10 @@ Place where I do cool stuff with RL.
 <p align="center">
     <img src="assets/ex2.png" width="400">
 </p>
+
+## Setup
+
+```
+pip install -U pip wheel
+pip install -r requirements.txt
+```

@@ -20,6 +20,8 @@ def create_env(config_file_name: str, seed: int):
         if env_kwargs is None:
             env_kwargs = dict()
         env = gym.make(config["env_name"], **env_kwargs)
+        env.seed = seed
+        env.env_name = config["env_name"]
         env.reset(seed=seed)
     else:
         raise NameError(
