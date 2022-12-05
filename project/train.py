@@ -33,12 +33,10 @@ def to_numpy(tensor):
 
 
 # Policy training function
-def train(agent, env, buffer_dqn):
+def train(agent, env):
     timesteps, reward_sum = np.inf, np.inf
 
     # Store action's outcome (so that the agent can improve its policy)
-    if isinstance(agent, DQNAgent):
-        timesteps, reward_sum = train_dqn(agent, env, buffer_dqn)
     if isinstance(agent, PG):
         timesteps, reward_sum = train_pg(agent, env, 1000)
     elif isinstance(agent, DDPG):
@@ -59,39 +57,6 @@ def train(agent, env, buffer_dqn):
         }
     )
     return info
-
-
-def train_dqn(agent: DQNAgent, env: Env, buffer):
-    state, done, ep_reward, env_step = env.reset(), False, 0, 0
-    eps = max(cfg.glie_b / (cfg.glie_b + ep), 0.05)
-
-    # collecting data and fed into replay buffer
-    while not done:
-        env_step += 1
-        if ep < cfg.random_episodes:
-            # in the first #random_episodes, collect random trajectories
-            action = env.action_space.sample()
-        else:
-            # Select and perform an action
-            action = agent.get_action(state, eps)
-            if isinstance(action, np.ndarray):
-                action = action.item()
-
-        next_state, reward, done, _ = env.step(action)
-        ep_reward += reward
-
-        # Store the transition in replay buffer
-        buffer.add(state, action, next_state, reward, done)
-
-        # Move to the next state
-        state = next_state
-
-        # Perform one update_per_episode step of the optimization
-        if ep >= cfg.random_episodes:
-            update_info = agent.update(buffer)
-        else:
-            update_info = {}
-    return ep, ep_reward
 
 
 def train_pg(agent: PG, env: Env):
@@ -172,12 +137,13 @@ def main():
     # use wandb to store stats; we aren't currently logging anything into wandb during testing
     # if cfg.use_wandb and not cfg.testing:
     wandb.init(
-        project="rl_aalto",
+        project="rl_aalto_project",
         entity="marcodifrancesco",
         name=f"{cfg.exp_name}-{cfg.env_name}-{args.agent_name}-{str(cfg.seed)}-{str(cfg.run_id)}",
         group=f"{cfg.exp_name}-{cfg.env_name}-{args.agent_name}",
         config=cfg,
     )
+    wandb.config.update(args)
 
     # create a env
     env = gym.make(cfg.env_name)
@@ -191,7 +157,7 @@ def main():
             video_path = work_dir / "video" / "test"
         # During training, save every 50th episode
         else:
-            ep_trigger = 50
+            ep_trigger = 200
             video_path = work_dir / "video" / "train"
         env = gym.wrappers.RecordVideo(
             env,
@@ -203,15 +169,9 @@ def main():
     agent = _get_agent(args, env)
 
     if not args.testing:
-        # Training
-        state_shape = env.observation_space.shape
-        # ex4 -> Cartpole: 50000, LunarLander: 500000
-        buffer_size = 50000
-        buffer_dqn = ReplayBuffer(state_shape, action_dim=1, max_size=buffer_size)
-
         for ep in range(args.train_episodes + 1):
             # collect data and update the policy
-            train_info = train(agent, env, buffer_dqn)
+            train_info = train(agent, env)
 
             wandb.log(train_info)
             L.log(**train_info)
@@ -282,7 +242,6 @@ def _get_agent(args, env):
     elif args.agent_name == "ddpg":
         # ex6/train.py:156
         state_shape = env.observation_space.shape
-        print("env.action_space", env.action_space, env.action_space.shape)
         action_dim = env.action_space.shape[0]
         max_action = env.action_space.high[0]
 
