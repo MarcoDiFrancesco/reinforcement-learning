@@ -238,12 +238,12 @@ def _get_args():
     parser.add_argument("--save_video", help="<True|False>")
     parser.add_argument("--testing", help="<True|False>")
 
-    parser.add_argument("--lr")
-    parser.add_argument("--actor_lr")
-    parser.add_argument("--critic_lr")
-    parser.add_argument("--gamma")
-    parser.add_argument("--tau")
-    parser.add_argument("--batch_size")
+    parser.add_argument("--lr", type=float)
+    parser.add_argument("--actor_lr", type=float)
+    parser.add_argument("--critic_lr", type=float)
+    parser.add_argument("--gamma", type=float)
+    parser.add_argument("--tau", type=float)
+    parser.add_argument("--batch_size", type=int)
     args = parser.parse_args()
 
     # Parse variables
@@ -282,24 +282,25 @@ def _get_agent(args, env):
     elif args.agent_name == "ddpg":
         # ex6/train.py:156
         state_shape = env.observation_space.shape
+        print("env.action_space", env.action_space, env.action_space.shape)
         action_dim = env.action_space.shape[0]
         max_action = env.action_space.high[0]
 
-        assert args.actor_lr
-        assert args.critic_lr
-        assert args.gamma
-        assert args.tau
-        assert args.batch_size
+        assert type(args.actor_lr) is float
+        assert type(args.critic_lr) is float
+        assert type(args.gamma) is float
+        assert type(args.tau) is float
+        assert type(args.batch_size) is int
 
         agent = DDPG(
             state_shape,
             action_dim,
             max_action,
-            actor_lr=bool(args.actor_lr),
-            critic_lr=bool(args.critic_lr),
-            gamma=bool(args.gamma),
-            tau=bool(args.tau),
-            batch_size=int(args.batch_size),
+            actor_lr=args.actor_lr,
+            critic_lr=args.critic_lr,
+            gamma=args.gamma,
+            tau=args.tau,
+            batch_size=args.batch_size,
             buffer_size=1e6,
         )
     else:
