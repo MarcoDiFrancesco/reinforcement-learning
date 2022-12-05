@@ -75,9 +75,7 @@ class PG(object):
         self.action_probs = []
         self.rewards = []
 
-    def update(
-        self,
-    ):
+    def update(self):
 
         # Prepare dataset used to update policy
         action_probs = (

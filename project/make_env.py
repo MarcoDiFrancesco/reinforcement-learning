@@ -10,7 +10,7 @@ GYM_TASKS = {
 }
 
 
-def create_env(config_file_name, seed):
+def create_env(config_file_name: str, seed: int):
     config = yaml.load(
         open(f"./configs/{config_file_name}.yaml", "r"), Loader=yaml.Loader
     )
@@ -21,7 +21,6 @@ def create_env(config_file_name, seed):
             env_kwargs = dict()
         env = gym.make(config["env_name"], **env_kwargs)
         env.reset(seed=seed)
-
     else:
         raise NameError(
             "Wrong environment name was provided in the config file! Please report this to @Nikita Kostin."
