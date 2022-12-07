@@ -59,6 +59,7 @@ class DDPG(object):
         gamma,
         tau,
         batch_size,
+        random_transition,
         use_ou=False,
         normalize=False,
         buffer_size=1e6,
@@ -92,7 +93,8 @@ class DDPG(object):
         # used to count number of transitions in a trajectory
         self.buffer_ptr = 0
         self.buffer_head = 0
-        self.random_transition = 5000  # collect 5k random data for better exploration
+        # collect 5k random data for better exploration
+        self.random_transition = random_transition
 
     # def update(self):
     #     """ After collecting one trajectory, update the pi and q for #transition times: """
@@ -174,9 +176,8 @@ class DDPG(object):
         if self.state_scaler is not None:
             x = self.state_scaler.transform(x)
 
-        if (
-            self.buffer_ptr < self.random_transition
-        ):  # collect random trajectories for better exploration.
+        # collect random trajectories for better exploration.
+        if self.buffer_ptr < self.random_transition and not evaluation:
             action = torch.rand(self.action_dim)
         else:
             expl_noise = 0.1  # the stddev of the expl_noise if not evaluation
@@ -204,10 +205,30 @@ class DDPG(object):
         self.buffer.add(state, action, next_state, reward, done)
 
     # You can implement these if needed, following the previous exercises.
+    # def load(self, filepath):
+    #     self.pi.load_state_dict(torch.load(f"{filepath}/actor.pt"))
+    #     self.q.load_state_dict(torch.load(f"{filepath}/critic.pt"))
+
+    # def save(self, filepath):
+    #     torch.save(self.pi.state_dict(), f"{filepath}/actor.pt")
+    #     torch.save(self.q.state_dict(), f"{filepath}/critic.pt")
+
     def load(self, filepath):
-        self.pi.load_state_dict(torch.load(f"{filepath}/actor.pt"))
-        self.q.load_state_dict(torch.load(f"{filepath}/critic.pt"))
+        d = torch.load(filepath)
+        self.pi.load_state_dict(d["pi"])
+        self.q.load_state_dict(d["q"])
+        self.pi_target.load_state_dict(d["pi_target"])
+        self.q_target.load_state_dict(d["q_target"])
+        print("Successfully loaded model from {}".format(filepath))
 
     def save(self, filepath):
-        torch.save(self.pi.state_dict(), f"{filepath}/actor.pt")
-        torch.save(self.q.state_dict(), f"{filepath}/critic.pt")
+        torch.save(
+            {
+                "pi": self.pi.state_dict(),
+                "pi_target": self.pi_target.state_dict(),
+                "q": self.q.state_dict(),
+                "q_target": self.q_target.state_dict(),
+            },
+            filepath,
+        )
+        print("Successfully saved model to {}".format(filepath))

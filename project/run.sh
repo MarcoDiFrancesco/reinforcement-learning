@@ -1,21 +1,27 @@
-# WANDB_MODE=disabled \
+WANDB_MODE=disabled \
 python train.py \
---config_file_name=hopper_easy \
---agent_name=ddpg \
---seed=4 \
---save_video=True \
---actor_lr 3e-4 \
---critic_lr 3e-4 \
+--config_file_name hopper_easy \
+--agent_name ddpg \
+--seed=3 \
+--lr 0.0003 \
 --gamma 0.99 \
 --tau 0.005 \
 --batch_size 256 \
 --train_episodes 500000 \
+--random_transition 5000 \
+--buffer_size 100000 \
+
+
+
+
+
 # --testing=True \
+# --save_video=True \
 
 # Options:
 # mountaincarcontinuous_easy.yaml
 #
-# lunarlander_continuous_easy.yaml
+# lunarlander_continuous_easy.yaml (DDPG=continuous)
 # lunarlander_continuous_medium.yaml
 # lunarlander_discrete_easy.yaml
 # lunarlander_discrete_medium.yaml
