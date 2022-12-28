@@ -7,3 +7,7 @@ wandb/
 results/
 *.gif
 *.pkl
+.DS_Store
+
+ex4_old/
+project/

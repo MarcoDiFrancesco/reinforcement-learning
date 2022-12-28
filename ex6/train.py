@@ -38,6 +38,8 @@ def train(agent, env, max_episode_steps=1000):
         # Sample action from policy
         action, act_logprob = agent.get_action(obs)
 
+        print("ACTION", action, to_numpy(action))
+
         # Perform the action on the environment, get new state and reward
         next_obs, reward, done, _ = env.step(to_numpy(action))
 
@@ -79,7 +81,6 @@ def test(agent, env, num_episode=10):
     for ep in range(num_episode):
         obs, done = env.reset(), False
         test_reward = 0
-
         while not done:
             # Similar to the training loop above -
             # get the action, act on the environment, save total reward
@@ -97,31 +98,41 @@ def test(agent, env, num_episode=10):
 
 
 # The main function
-@hydra.main(config_path="cfg", config_name="ex6_cfg")
+@hydra.main(config_path="cfg", config_name="project_cfg")
 def main(cfg):
     # sed seed
     h.set_seed(cfg.seed)
     cfg.run_id = int(time.time())
 
     # create folders if needed
-    work_dir = Path().cwd() / "results" / f"{cfg.env_name}"
-    if cfg.save_model:
-        h.make_dir(work_dir / "model")
-    if cfg.save_logging:
-        h.make_dir(work_dir / "logging")
-        L = logger.Logger()  # create a simple logger to record stats
+    # work_dir = Path().cwd() / "results" / f"{cfg.env_name}"
+    work_dir = Path().cwd() / "results" / f"{cfg.env_name}_{cfg.agent_name}_{cfg.seed}"
+    # if cfg.save_model:
+    #     h.make_dir(work_dir / "model")
+    # if cfg.save_logging:
+    #     h.make_dir(work_dir / "logging")
+    #     L = logger.Logger()  # create a simple logger to record stats
 
     # Model filename
-    if cfg.model_path == "default":
-        cfg.model_path = work_dir / "model" / f"{cfg.env_name}_params.pt"
+    # if cfg.model_path == "default":
+    #     cfg.model_path = work_dir / "model" / f"{cfg.env_name}_params.pt"
+
+    MODEL_PATH = work_dir / "model"
+    h.make_dir(MODEL_PATH)
+    MODEL_PATH_BEST = MODEL_PATH / "best.pth"
+    MODEL_PATH_LAST = MODEL_PATH / "last.pth"
+    h.make_dir(work_dir / "logging")
+    L = logger.Logger()  # create a simple logger to record stats
 
     # use wandb to store stats; we aren't currently logging anything into wandb during testing
     if cfg.use_wandb and not cfg.testing:
         wandb.init(
             project="rl_aalto",
             entity="marcodifrancesco",
-            name=f"{cfg.exp_name}-{cfg.env_name}-{str(cfg.seed)}-{str(cfg.run_id)}",
-            group=f"{cfg.exp_name}-{cfg.env_name}",
+            # name=f"{cfg.exp_name}-{cfg.env_name}-{str(cfg.seed)}-{str(cfg.run_id)}",
+            name=f"project-{cfg.env_name}-{cfg.agent_name}-{cfg.seed}-{cfg.run_id}",
+            # group=f"{cfg.exp_name}-{cfg.env_name}",
+            group=f"project-{cfg.env_name}-{cfg.agent_name}",
             config=cfg,
         )
 
@@ -165,6 +176,7 @@ def main(cfg):
         )
 
     if not cfg.testing:  # training
+        best_reward = -1000
         for ep in range(cfg.train_episodes + 1):
             # collect data and update the policy
             train_info = train(agent, env)
@@ -176,19 +188,33 @@ def main(cfg):
             if (not cfg.silent) and (ep % 100 == 0):
                 print({"ep": ep, **train_info})
 
-        if cfg.save_model:
-            agent.save(cfg.model_path)
+            if ep % 1000 == 0:
+                agent.save(MODEL_PATH_LAST)
+            if best_reward < train_info["ep_reward"]:
+                print("Best reward", train_info["ep_reward"])
+                best_reward = train_info["ep_reward"]
+                agent.save(MODEL_PATH_BEST)
+
+        # if cfg.save_model:
+        #     agent.save(cfg.model_path)
+        agent.save(MODEL_PATH_LAST)
 
     else:  # testing
-        if cfg.model_path == "default":
-            cfg.model_path = work_dir / "model" / f"{cfg.env_name}_params.pt"
-        print("Loading model from", cfg.model_path, "...")
+        # if cfg.model_path == "default":
+        #     cfg.model_path = work_dir / "model" / f"{cfg.env_name}_params.pt"
+
+        # loading_dir = MODEL_PATH_LAST
+        loading_dir = MODEL_PATH_BEST
+
+        # print("Loading model from", cfg.model_path, "...")
+        print("Loading model from", loading_dir, "...")
 
         # load model
-        agent.load(cfg.model_path)
+        # agent.load(cfg.model_path)
+        agent.load(loading_dir)
 
         print("Testing ...")
-        test(agent, env, num_episode=10)
+        test(agent, env, num_episode=50)
 
 
 # Entry point of the script

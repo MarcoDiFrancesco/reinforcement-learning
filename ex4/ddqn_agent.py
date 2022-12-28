@@ -30,7 +30,7 @@ def mlp(in_dim, mlp_dims: List[int], out_dim, act_fn=nn.ReLU, out_act=nn.Identit
     return nn.Sequential(*layers)
 
 
-class DQNAgent(object):
+class DDQNAgent(object):
     def __init__(
         self,
         state_shape,
@@ -74,6 +74,26 @@ class DQNAgent(object):
         #        4. check torch.nn.utils.clip_grad_norm_() to know how to clip grad norm
         #        5. You can go throught the PyTorch Tutorial given on MyCourses if you are not familiar with it.
 
+        # Double DQN
+        # Tensor with best action for all next states of the batch, size = [512]
+        action = torch.Tensor.argmax(self.policy_net(batch.next_state), 1)
+        # Get evaluation of greedy policy but from target network
+        # Tensor with Q for all next_states in batch and with action from before
+        q_max = (
+            self.target_net(batch.next_state)
+            .gather(1, action.view(-1, 1))
+            .reshape(batch.not_done.size())
+        )
+        q_tar = batch.reward + self.gamma * q_max * batch.not_done
+        q_tar = q_tar.detach()
+
+        # calculate the q(s,a)
+        qs = torch.gather(
+            self.policy_net(batch.state), 1, batch.action.type(torch.int64)
+        )
+
+        # DQN
+        """
         # calculate the q(s,a)
         qs = self.policy_net(batch.state)
         qs = torch.gather(qs, dim=1, index=batch.action.type(torch.int64))
@@ -82,13 +102,13 @@ class DQNAgent(object):
         target_max_val, target_max_idx = target_next.max(dim=1)
         target_max_val = target_max_val.unsqueeze(1)
 
-        # Double DQN
 
         # calculate q target (check q-learning)
         q_tar = batch.reward + batch.not_done * (self.gamma * target_max_val)
 
         # Detach q-target
         q_tar = q_tar.detach()
+        """
 
         # calculate the loss
         loss = ((qs - q_tar) ** 2).sum() * 0.5

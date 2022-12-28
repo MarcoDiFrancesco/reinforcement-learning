@@ -2,6 +2,8 @@ import os
 import sys
 
 sys.path.insert(0, os.path.abspath(".."))
+import random
+
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -62,6 +64,8 @@ class Policy(nn.Module):
 class PG(object):
     def __init__(self, state_dim, action_dim, lr, gamma):
 
+        self.action_dim = action_dim
+
         # Define the neural network policy
         self.policy = Policy(state_dim, action_dim).to(device)
 
@@ -91,7 +95,10 @@ class PG(object):
         disc_rew = h.discount_rewards(rewards, self.gamma)
         disc_rew = (disc_rew - disc_rew.mean()) / (disc_rew.std())
         #   2. compute the policy gradient loss
-        loss = -torch.mean((disc_rew - baseline) * action_probs.squeeze())
+
+        loss = -torch.mean(
+            (disc_rew - baseline) * action_probs.squeeze().max(axis=1).values
+        )
         #   3. update the parameters (backpropagate gradients, do the optimizer step, empty optimizer
         #      gradients afterwards so that gradients don't accumulate over updates)
         loss.backward()
@@ -120,7 +127,8 @@ class PG(object):
 
         norm_dist = self.policy.forward(x)
         if evaluation:
-            action = norm_dist.mean()
+            # action = norm_dist.mean()
+            action = norm_dist.mean
         else:
             action = norm_dist.sample()
 
@@ -134,7 +142,22 @@ class PG(object):
         if observation.ndim == 1:
             action = action[0]
 
+        action = self._get_action_discrete(action)
+
         return action, act_logprob
+
+    @torch.no_grad()
+    def _get_action_discrete(self, action_arr, epsilon=0.05):
+        # Task 3: implement epsilon-greedy action selection
+        ########## You code starts here #########
+        if random.random() > epsilon:
+            # action_arr = torch.Tensor(action_arr).to(device)
+            action = action_arr.argmax()
+        else:
+            action = np.random.choice(np.arange(self.action_dim))
+        action = action.item()
+        return action
+        ########## You code ends here #########
 
     def record(self, action_prob, reward):
         """Store agent's and env's outcomes to update the agent."""

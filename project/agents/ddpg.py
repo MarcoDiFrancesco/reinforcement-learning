@@ -7,9 +7,9 @@ import copy
 import numpy as np
 import torch
 import torch.nn.functional as F
+from agents import helper as h
 from torch import nn
 
-from common import helper as h
 from common.buffer import ReplayBuffer
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -77,7 +77,8 @@ class DDPG(object):
 
         self.buffer = ReplayBuffer(state_shape, action_dim, max_size=int(buffer_size))
         if normalize:
-            self.state_scaler = h.StandardScaler(n_dim=state_dim)
+            # self.state_scaler = h.StandardScaler(n_dim=state_dim)
+            self.state_scaler = h.StandardScaler()
         else:
             self.state_scaler = None
 

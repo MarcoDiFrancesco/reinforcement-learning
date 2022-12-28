@@ -81,9 +81,7 @@ class DDPG(object):
         self.buffer_head = 0
         self.random_transition = 5000  # collect 5k random data for better exploration
 
-    def update(
-        self,
-    ):
+    def update(self):
         """After collecting one trajectory, update the pi and q for #transition times:"""
         info = {}
         update_iter = (
@@ -144,7 +142,7 @@ class DDPG(object):
         x = torch.from_numpy(observation).float().to(device)
 
         if (
-            self.buffer_ptr < self.random_transition
+            self.buffer_ptr < self.random_transition and not evaluation
         ):  # collect random trajectories for better exploration.
             action = torch.rand(self.action_dim)
         else:
@@ -174,7 +172,21 @@ class DDPG(object):
 
     # You can implement these if needed, following the previous exercises.
     def load(self, filepath):
-        pass
+        d = torch.load(filepath)
+        self.pi.load_state_dict(d["pi"])
+        self.q.load_state_dict(d["q"])
+        self.pi_target.load_state_dict(d["pi_target"])
+        self.q_target.load_state_dict(d["q_target"])
+        print("Successfully loaded model from {}".format(filepath))
 
     def save(self, filepath):
-        pass
+        torch.save(
+            {
+                "pi": self.pi.state_dict(),
+                "pi_target": self.pi_target.state_dict(),
+                "q": self.q.state_dict(),
+                "q_target": self.q_target.state_dict(),
+            },
+            filepath,
+        )
+        print("Successfully saved model to {}".format(filepath))

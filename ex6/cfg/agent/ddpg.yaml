@@ -1,8 +1,12 @@
 # @package _global_
-env_name: HalfCheetah-v4
-agent_name: ddpg
 
-train_episodes: 300
+env_name: 'Hopper-v2'
+env_parameters:
+
+agent_name: ddpg
+run_id: ??? # decided during execution
+
+train_episodes: 5000
 gamma: 0.99
 lr: 3e-4
 tau: 0.005

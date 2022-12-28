@@ -8,10 +8,9 @@ import torch.nn.functional as F
 from torch import nn
 from torch.distributions import Normal
 
-from common.helper import StandardScaler
+from common import helper as h
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
 
 # Actor-critic agent
 def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
@@ -24,16 +23,16 @@ class Policy(nn.Module):
     def __init__(self, state_dim, action_dim):
         super().__init__()
         self.actor_mean = nn.Sequential(
-            layer_init(nn.Linear(state_dim, 128)),
-            nn.ReLU(),
-            layer_init(nn.Linear(128, 64)),
-            nn.ReLU(),
-            layer_init(nn.Linear(64, action_dim), std=0.01),
+            layer_init(nn.Linear(state_dim, 64)),
             nn.Tanh(),
+            layer_init(nn.Linear(64, 64)),
+            nn.Tanh(),
+            layer_init(nn.Linear(64, action_dim), std=0.01),
         )
-        # TODO: Task 1: Implement actor_logstd as a learnable parameter
+        # Task 1: Implement actor_logstd as a learnable parameter
         # Use log of std to make sure std doesn't become negative during training
-        self.actor_logstd = nn.Parameter(torch.zeros(1, action_dim))
+        self.actor_logstd = torch.Tensor([[0.0]]).to(device)
+        self.actor_logstd = torch.nn.Parameter(self.actor_logstd)
 
     def forward(self, state):
         # Get mean of a Normal distribution (the output of the neural network)
@@ -45,8 +44,7 @@ class Policy(nn.Module):
         # Exponentiate the log std to get actual std
         action_std = torch.exp(action_logstd)
 
-        # TODO: Task 1: Create a Normal distribution with mean of 'action_mean' and standard deviation of
-        #  'action_logstd', and return the distribution
+        # Task 1: Create a Normal distribution with mean of 'action_mean' and standard deviation of 'action_logstd', and return the distribution
         probs = Normal(action_mean, action_std)
 
         return probs
@@ -68,83 +66,71 @@ class Value(nn.Module):
 
 
 class PG(object):
-    def __init__(self, state_dim, action_dim, lr, gamma, ent_coeff, normalize=False):
+    def __init__(self, state_dim, action_dim, lr, gamma):
         self.policy = Policy(state_dim, action_dim).to(device)
         self.value = Value(state_dim).to(device)
-        self.opt = torch.optim.Adam(self.policy.parameters(), lr=lr)
-
-        if normalize:
-            self.scaler = StandardScaler(n_dim=state_dim, device=device)
-        else:
-            self.scaler = None
+        self.optimizer = torch.optim.Adam(
+            list(self.policy.parameters()) + list(self.value.parameters()),
+            lr=lr,
+        )
 
         self.gamma = gamma
-        self.ent_coeff = ent_coeff
 
         # a simple buffer
-        self.states = None
-        self.action_probs = None
-        self.action_ents = None
-        self.rewards = None
-        self.dones = None
-        self.next_states = None
-
-        self._reset_buffer()
-
-    def _reset_buffer(
-        self,
-    ):
         self.states = []
         self.action_probs = []
-        self.action_ents = []
         self.rewards = []
         self.dones = []
         self.next_states = []
 
-    def update(
-        self,
-    ):
+    def update(self):
         action_probs = torch.stack(self.action_probs, dim=0).to(device).squeeze(-1)
-        action_ents = torch.stack(self.action_ents, dim=0).to(device).squeeze(-1)
         rewards = torch.stack(self.rewards, dim=0).to(device).squeeze(-1)
-        discounted_rewards = torch.cumsum(
-            rewards * torch.cumprod(self.gamma * torch.ones_like(rewards), dim=-1),
-            dim=-1,
-        )
         states = torch.stack(self.states, dim=0).to(device).squeeze(-1)
         next_states = torch.stack(self.next_states, dim=0).to(device).squeeze(-1)
         dones = torch.stack(self.dones, dim=0).to(device).squeeze(-1)
         # clear buffer
-        self._reset_buffer()
+        self.states, self.action_probs, self.rewards, self.dones, self.next_states = (
+            [],
+            [],
+            [],
+            [],
+            [],
+        )
 
-        if self.scaler is not None:
-            self.scaler.fit(states)
-            states = self.scaler.transform(states)
-            next_states = self.scaler.transform(next_states)
+        # Task 1
+        ########## Your code starts here. ##########
+        # action_probs: tensor([[-4.9391], [-0.9320], [-0.9878]])
+        # rewards: tensor([1., 1., 1.])
+        # states: Size([3, 4]) - tensor([[-0.0171,  0.0374, -0.9457,  2.1420], ...)
+        # next_states: Size([3, 4]) - tensor([[-0.0171,  0.0374, -0.9457,  2.1420], ...)
+        # dones: tensor([0., 0., 1.])
 
-        values = self.value(states)
-
-        # calculate the target values
+        # Hints: 1. calculate the TD target as well as the MSE loss between the predicted value and the TD target
+        # Actor
         with torch.no_grad():
-            next_values = self.value(next_states)
-            target_values = (
-                discounted_rewards + self.gamma * (1.0 - dones) * next_values
-            )
+            not_dones = 1 - dones
+            td_target = rewards + self.gamma * self.value(next_states) * not_dones
+        value_loss = F.mse_loss(td_target.detach(), self.value(states))
 
-        critic_loss = F.mse_loss(values, target_values)
-
-        # Advantage estimation
+        # Critic
+        #        2. calculate the policy loss (similar to ex5) with advantage calculated from the value function. Normalise
+        #           the advantage to zero mean and unit variance.
         with torch.no_grad():
-            adv = target_values - values
-            adv = (adv - adv.mean()) / adv.std()
+            # Advantage
+            adv = td_target - self.value(states)
+            # adv_norm: Size([24]) or Size([19]), tensor([-1.0160,  0.7055, -0.0833, ...]
+            adv_norm = (adv - adv.mean()) / adv.std()
+        policy_loss = torch.mean(-action_probs.squeeze() * adv_norm.detach())
 
-        # Compute the optimization term
-        weighted_probs = -action_probs * adv
-        actor_loss = torch.mean(weighted_probs)
-        loss = critic_loss + actor_loss + self.ent_coeff * action_ents.sum()
+        # Loss: Actor + Critic
+        loss = value_loss + policy_loss
+
+        #        3. update parameters of the policy and the value function jointly
         loss.backward()
-        self.opt.step()
-        self.opt.zero_grad()
+        self.optimizer.step()
+        self.optimizer.zero_grad()
+        ########## Your code ends here. ##########
 
         # if you want to log something in wandb, you can put them inside the {}, otherwise, just leave it empty.
         return {}
@@ -154,39 +140,44 @@ class PG(object):
         if observation.ndim == 1:
             observation = observation[None]  # add the batch dimension
         x = torch.from_numpy(observation).float().to(device)
-        if self.scaler is not None:
-            x = self.scaler.transform(x)
 
+        # Task 1
+        ########## Your code starts here. ##########
+        # Hints: 1. the self.policy returns a normal distribution, check the PyTorch document to see
+        #           how to calculate the log_prob of an action and how to sample.
+
+        # x: tensor([[ 0.0020, -0.0057, -0.0058, -0.0096]])
+        # dist: tensor([[-2.8355]]) - Normal distribution of the model
         dist = self.policy(x)
+
+        #        2. if evaluation, return mean, otherwise, return a sample
         if evaluation:
-            action = dist.mean
+            action = dist.mean()
         else:
             action = dist.sample()
 
-        action_ent = dist.entropy().mean()
+        # action: tensor([[-2.8355]])
+        # act_logprob: tensor([[-4.9391]]) - Probability that action was taken
+        act_logprob = dist.log_prob(action)
 
-        # calculate the log probability of the action
-        act_logprob = dist.log_prob(action).sum(-1)
-
-        action, act_logprob = action, act_logprob.squeeze()
+        #        3. the returned action and the act_logprob should be the torch.Tensors.
+        #            Please always make sure the shape of variables is as you expected.
+        assert type(action) is torch.Tensor
+        assert type(act_logprob) is torch.Tensor
         ########## Your code ends here. ###########
 
-        return action, (act_logprob, action_ent)
+        return action, act_logprob
 
-    def record(
-        self, observation, action_prob, action_ent, reward, done, next_observation
-    ):
+    def record(self, observation, action_prob, reward, done, next_observation):
         self.states.append(torch.tensor(observation, dtype=torch.float32))
         self.action_probs.append(action_prob)
-        self.action_ents.append(action_ent)
         self.rewards.append(torch.tensor([reward], dtype=torch.float32))
         self.dones.append(torch.tensor([done], dtype=torch.float32))
         self.next_states.append(torch.tensor(next_observation, dtype=torch.float32))
 
+    # You can implement these if needed, following the previous exercises.
     def load(self, filepath):
-        self.policy.load_state_dict(torch.load(f"{filepath}/actor.pt"))
-        self.value.load_state_dict(torch.load(f"{filepath}/critic.pt"))
+        pass
 
     def save(self, filepath):
-        torch.save(self.policy.state_dict(), f"{filepath}/actor.pt")
-        torch.save(self.value.state_dict(), f"{filepath}/critic.pt")
+        pass

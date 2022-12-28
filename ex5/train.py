@@ -40,7 +40,8 @@ def train(agent: PG, env):
         #  (Steps 1. and 2. you can also find from the 'test' function below)
         action, act_logprob = agent.get_action(obs)
         # 5. Use the observation you receive from env.step to call agent.get_action for the next timestep
-        obs, reward, done, info = env.step(to_numpy(action))
+        obs, reward, done, info = env.step(action)
+        # obs, reward, done, info = env.step(action)
 
         # 3. Store the log prob of action and reward by calling agent.record
         agent.record(act_logprob, reward)
@@ -65,7 +66,7 @@ def train(agent: PG, env):
 
 # Function to test a trained policy
 @torch.no_grad()
-def test(agent, env, num_episodes=10):
+def test(agent, env, num_episodes=50):
     total_test_reward = 0
     for ep in range(num_episodes):
         obs, done = env.reset(), False
@@ -77,7 +78,8 @@ def test(agent, env, num_episodes=10):
             # (evaluation=True makes the agent always return what it thinks to be
             # the best action - there is no exploration at this point)
             action, _ = agent.get_action(obs, evaluation=True)
-            obs, reward, done, info = env.step(to_numpy(action))
+            # obs, reward, done, info = env.step(to_numpy(action))
+            obs, reward, done, info = env.step(action)
 
             test_reward += reward
 
@@ -108,7 +110,8 @@ def main(cfg):
 
     # Model filename
     if cfg.model_path == "default":
-        cfg.model_path = work_dir / "model" / f"{cfg.env_name}_params.pt"
+        cfg.model_path = Path().cwd() / "results" / f"{cfg.env_name}_{cfg.seed}"
+        # cfg.model_path = work_dir / "model" / f"{cfg.env_name}_params.pt"
 
     # Use wandb to store stats
     if cfg.use_wandb and not cfg.testing:
@@ -143,8 +146,17 @@ def main(cfg):
         )
 
     # Get state and action dimensionality
-    state_dim = env.observation_space.shape[0]
-    action_dim = env.action_space.shape[0]
+    if cfg.env_name == "InvertedPendulum-v4":
+        state_dim = env.observation_space.shape[0]
+        action_dim = env.action_space.shape[0]
+    elif cfg.env_name == "LunarLander-v2":
+        state_dim = 8  # (8,)
+        action_dim = 4
+        # action_dim = env.action_space.n
+        # state_dim = env.observation_space.shape
+    else:
+        raise KeyError
+    print("action_dim", action_dim)
 
     # Initialise the policy gradient agent
     print(
@@ -157,7 +169,12 @@ def main(cfg):
         "cfg.gamma",
         cfg.gamma,
     )
-    agent = PG(state_dim, action_dim, cfg.lr, cfg.gamma)
+    agent = PG(
+        state_dim,
+        action_dim,
+        cfg.lr,
+        cfg.gamma,
+    )
 
     if not cfg.testing:  # training
         for ep in range(cfg.train_episodes):
@@ -171,6 +188,9 @@ def main(cfg):
                 L.log(**train_info)
             if (not cfg.silent) and (ep % 100 == 0):
                 print({"ep": ep, **train_info})
+            if ep % 100 == 0:
+                print(f"Saving model in {cfg.model_path}")
+                agent.save(cfg.model_path)
 
         if cfg.save_model:
             agent.save(cfg.model_path)

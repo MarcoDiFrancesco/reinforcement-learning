@@ -18,12 +18,15 @@ from gym import Env
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
+from agents import helper as h
 from agents.ddpg import DDPG
 from agents.dqn_agent import DQNAgent
-from agents.pg import PG
+from agents.pg import PG as PG_BASE
+
+# from agents.pg_ac import PG as PG_AC
+from agents.pg_ac_taversion import PG as PG_AC
 from make_env import create_env
 
-from common import helper as h
 from common import logger as logger
 from common.buffer import ReplayBuffer
 
@@ -33,18 +36,45 @@ def to_numpy(tensor):
 
 
 # Policy training function
-def train(agent, env):
-    timesteps, reward_sum = np.inf, np.inf
+def train(agent, env, max_episode_steps=1000):
+    # Run actual training
+    reward_sum, timesteps, done, episode_timesteps = 0, 0, False, 0
+    # Reset the environment and observe the initial state
+    obs = env.reset()
+    while not done:
+        episode_timesteps += 1
 
-    # Store action's outcome (so that the agent can improve its policy)
-    if isinstance(agent, PG):
-        timesteps, reward_sum = train_pg(agent, env)
-    elif isinstance(agent, DDPG):
-        timesteps, reward_sum = train_ddpg(agent, env, 1000)
-    else:
-        raise ValueError
+        if isinstance(agent, PG_AC):
+            # Sample action from policy
+            action, (act_logprob, action_ent) = agent.get_action(obs)
 
-    assert timesteps != np.inf and reward_sum != np.inf
+            # Perform the action on the environment, get new state and reward
+            next_obs, reward, done, _ = env.step(to_numpy(action))
+
+            done_bool = done
+            # observation, action_prob, action_ent, reward, done, next_observation
+            agent.record(obs, action, action_ent, reward, done_bool, next_obs)
+        elif isinstance(agent, DDPG):
+            # Sample action from policy
+            action, act_logprob = agent.get_action(obs)
+
+            # Perform the action on the environment, get new state and reward
+            next_obs, reward, done, _ = env.step(to_numpy(action))
+
+            # Store action's outcome (so that the agent can improve its policy)
+            # ignore the time truncated terminal signal
+            done_bool = float(done) if episode_timesteps < max_episode_steps else 0
+            # agent.record(obs, action, next_obs, reward, done_bool)
+            agent.record(obs, action, next_obs, reward, done_bool)
+        else:
+            raise ValueError
+
+        # Store total episode reward
+        reward_sum += reward
+        timesteps += 1
+
+        # update observation
+        obs = next_obs.copy()
 
     # update the policy after one episode
     info = agent.update()
@@ -57,63 +87,6 @@ def train(agent, env):
         }
     )
     return info
-
-
-def train_pg(agent: PG, env: Env):
-    # Run actual training
-    reward_sum, timesteps, done, episode_timesteps = 0, 0, False, 0
-    # Reset the environment and observe the initial state
-    obs = env.reset()
-    while not done:
-        episode_timesteps += 1
-
-        # Sample action from policy
-        action, act_logprob = agent.get_action(obs)
-
-        # Perform the action on the environment, get new state and reward
-        next_obs, reward, done, _ = env.step(to_numpy(action))
-
-        # Store action's outcome (so that the agent can improve its policy)
-        done_bool = done
-        agent.record(obs, act_logprob, reward, done_bool, next_obs)
-
-        # Store total episode reward
-        reward_sum += reward
-        timesteps += 1
-
-        # update observation
-        obs = next_obs.copy()
-
-    return timesteps, reward_sum
-
-
-def train_ddpg(agent: DDPG, env: Env, max_episode_steps: int):
-    # Run actual training
-    reward_sum, timesteps, done, episode_timesteps = 0, 0, False, 0
-    # Reset the environment and observe the initial state
-    obs = env.reset()
-    while not done:
-        episode_timesteps += 1
-
-        # Sample action from policy
-        action, act_logprob = agent.get_action(obs)
-
-        # Perform the action on the environment, get new state and reward
-        next_obs, reward, done, _ = env.step(to_numpy(action))
-
-        # Store action's outcome (so that the agent can improve its policy)
-        # ignore the time truncated terminal signal
-        done_bool = float(done) if episode_timesteps < max_episode_steps else 0
-        agent.record(obs, action, next_obs, reward, done_bool)
-
-        # Store total episode reward
-        reward_sum += reward
-        timesteps += 1
-
-        # update observation
-        obs = next_obs.copy()
-
-    return timesteps, reward_sum
 
 
 @torch.no_grad()
@@ -142,10 +115,9 @@ def test(agent, env: Env):
 
 def main():
     args = _get_args()
-
+    h.set_seed(args.seed)
     env = create_env(args.config_file_name, args.seed)
 
-    h.set_seed(args.seed)
     env.run_id = int(time.time())
 
     # create folders if needed
@@ -156,14 +128,10 @@ def main():
     h.make_dir(MODEL_PATH)
     MODEL_PATH_BEST = MODEL_PATH / "best.pth"
     MODEL_PATH_LAST = MODEL_PATH / "last.pth"
-
     h.make_dir(work_dir / "logging")
     L = logger.Logger()  # create a simple logger to record stats
 
-    # Old names examples: "ex1", "ex2", ...
-    # cfg.exp_name = "project"
     # use wandb to store stats; we aren't currently logging anything into wandb during testing
-    # if cfg.use_wandb and not cfg.testing:
     wandb.init(
         project="rl_aalto_project",
         entity="marcodifrancesco",
@@ -211,12 +179,14 @@ def main():
 
         agent.save(MODEL_PATH_LAST)
     else:
+        loading_dir = MODEL_PATH_LAST
+        # loading_dir = MODEL_PATH_BEST
         # Testing
-        print("Loading model from", MODEL_PATH_BEST, "...")
+        print("Loading model from", loading_dir, "...")
         # load model
-        agent.load(MODEL_PATH_BEST)
+        agent.load(loading_dir)
         print("Testing ...")
-        test(agent, env, 1000)
+        test(agent, env)
 
 
 def _get_args():
@@ -246,39 +216,24 @@ def _get_args():
 
 
 def _get_agent(args, env):
-    # if args.agent_name == "dqn":
-    #     # ex4/train.py:69
-    #     n_actions = env.action_space.n
-    #     state_shape = env.observation_space.shape
-    #     agent = DQNAgent(
-    #         state_shape,
-    #         n_actions,
-    #         # Config file have: cartpole_dqn.yaml: 256, lunarlander_dqn.yaml: 512
-    #         batch_size=args.batch_size,
-    #         hidden_dims=args.hidden_dims,
-    #         gamma=args.gamma,
-    #         lr=args.lr,
-    #         tau=args.tau,
-    #     )
-    # elif args.agent_name == "pg":
+    state_shape = env.observation_space.shape
+    action_dim = env.action_space.shape[0]
+    max_action = env.action_space.high[0]
 
     if args.agent_name == "pg":
         # ex5/train.py:160
-        state_dim = env.observation_space.shape[0]
-        action_dim = env.action_space.shape[0]
-        agent = PG(
-            state_dim,
+        assert type(args.lr) is float
+        assert type(args.gamma) is float
+
+        agent = PG_AC(
+            state_shape[0],
             action_dim,
             lr=args.lr,
             gamma=args.gamma,
+            ent_coeff=0.01,  # https://github.com/openai/baselines/issues/371
         )
     elif args.agent_name == "ddpg":
         # ex6/train.py:156
-        state_shape = env.observation_space.shape
-        print("env.action_space.shape[0]", env.action_space, env.action_space.shape)
-        action_dim = env.action_space.shape[0]
-        max_action = env.action_space.high[0]
-
         assert type(args.lr) is float
         assert type(args.gamma) is float
         assert type(args.tau) is float
@@ -287,16 +242,18 @@ def _get_agent(args, env):
         assert type(args.buffer_size) is int
 
         agent = DDPG(
-            state_shape,
-            action_dim,
-            max_action,
-            actor_lr=args.lr,
-            critic_lr=args.lr,
-            gamma=args.gamma,
-            tau=args.tau,
-            batch_size=args.batch_size,
-            random_transition=args.random_transition,  # Old: 5000
-            buffer_size=args.buffer_size,  # Old: 1e6
+            state_shape=state_shape,
+            action_dim=action_dim,
+            max_action=max_action,
+            actor_lr=0.0003,  # args.lr
+            critic_lr=0.0003,  # args.lr
+            gamma=0.99,  # args.gamma
+            tau=0.005,  # args.tau
+            batch_size=256,  # args.batch_size
+            random_transition=5000,  # args.random_transition
+            use_ou=True,
+            # normalize=True,
+            buffer_size=1e6,  # args.buffer_size
         )
     else:
         raise KeyError("Algorithm not known")

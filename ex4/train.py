@@ -8,9 +8,12 @@ import numpy as np
 import torch
 import tqdm
 import wandb
+from ddqn_agent import DDQNAgent
 from dqn_agent import DQNAgent
 from matplotlib import pyplot as plt
 from rbf_agent import RBFAgent
+
+from project.make_env import create_env
 
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -20,14 +23,16 @@ from common import logger as logger
 from common.buffer import ReplayBuffer
 
 
-@hydra.main(config_path="cfg", config_name="ex4_cfg")
+@hydra.main(config_path="cfg", config_name="lunarlander_continuous_easy")
 def main(cfg):
     # set random seed
     h.set_seed(cfg.seed)
 
     cfg.run_id = int(time.time())
     # create folders if needed
-    work_dir = Path().cwd() / "results" / cfg.env_name
+    # work_dir = Path().cwd() / "results" / cfg.env_name
+    work_dir = Path().cwd() / "results" / f"{cfg.env_name}_{cfg.agent_name}_{cfg.seed}"
+
     if cfg.save_logging:
         logging_path = work_dir / "logging"
         h.make_dir(logging_path)
@@ -41,18 +46,25 @@ def main(cfg):
         wandb.init(
             project="rl_aalto",
             entity="marcodifrancesco",
-            name=f"{cfg.exp_name}-{cfg.agent_name}-{cfg.env_name}-{str(cfg.seed)}-{cfg.run_id}",
-            group=f"{cfg.exp_name}-{cfg.env_name}",
+            name=f"project-{cfg.env_name}-{cfg.agent_name}-{cfg.seed}-{cfg.run_id}",
+            group=f"project-{cfg.env_name}-{cfg.agent_name}",
             config=cfg,
         )
 
     # create env
+    env_kwargs = cfg.env_parameters
+    env_kwargs = dict()
+
     env = gym.make(
         cfg.env_name,
         render_mode="rgb_array" if cfg.save_video else None,
         max_episode_steps=cfg.max_episode_steps,
+        **env_kwargs,
     )
+
     env.seed(cfg.seed)
+    env.reset(seed=cfg.seed)
+
     if cfg.save_video:
         env = gym.wrappers.RecordVideo(
             env,
@@ -64,8 +76,11 @@ def main(cfg):
     n_actions = env.action_space.n
     state_shape = env.observation_space.shape
 
+    print("ACTION", n_actions, state_shape)
+
     # init agent
     if cfg.agent_name == "dqn":
+        print("Using DQN")
         agent = DQNAgent(
             state_shape,
             n_actions,
@@ -75,8 +90,23 @@ def main(cfg):
             lr=cfg.lr,
             tau=cfg.tau,
         )
+    elif cfg.agent_name == "ddqn":
+        print("Using DDQN")
+        agent = DDQNAgent(
+            state_shape,
+            n_actions,
+            batch_size=cfg.batch_size,
+            hidden_dims=cfg.hidden_dims,
+            gamma=cfg.gamma,
+            lr=cfg.lr,
+            tau=cfg.tau,
+        )
     elif cfg.agent_name == "rbf":
-        agent = RBFAgent(n_actions, gamma=cfg.gamma, batch_size=cfg.batch_size)
+        agent = RBFAgent(
+            n_actions,
+            gamma=cfg.gamma,
+            batch_size=cfg.batch_size,
+        )
     else:
         raise ValueError(f"No {cfg.agent_name} agent implemented")
 
@@ -100,7 +130,6 @@ def main(cfg):
                 action = agent.get_action(state, eps)
                 if isinstance(action, np.ndarray):
                     action = action.item()
-
             next_state, reward, done, _ = env.step(action)
             ep_reward += reward
 
@@ -123,8 +152,11 @@ def main(cfg):
             wandb.log(info)
         if cfg.save_logging:
             L.log(**info)
-        if (not cfg.silent) and (ep % 100 == 0):
+        if (not cfg.silent) and (ep % 50 == 0):
             print(info)
+        if ep % 100 == 0:
+            print(f"Saving model in {model_path}")
+            agent.save(model_path)
 
     # save model and logging
     if cfg.save_model:

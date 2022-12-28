@@ -1,5 +1,6 @@
 import os
 import sys
+from pathlib import Path
 
 sys.path.insert(0, os.path.abspath(".."))
 import numpy as np
@@ -32,7 +33,7 @@ class Policy(nn.Module):
         # Task 1: Implement actor_logstd as a learnable parameter
         # Use log of std to make sure std doesn't become negative during training
         self.actor_logstd = torch.Tensor([[0.0]]).to(device)
-        self.actor_logstd = torch.nn.Parameter(self.actor_logstd)
+        self.actor_logstd = torch.nn.Parameter(torch.zeros(1, action_dim))
 
     def forward(self, state):
         # Get mean of a Normal distribution (the output of the neural network)
@@ -108,23 +109,24 @@ class PG(object):
 
         # Hints: 1. calculate the TD target as well as the MSE loss between the predicted value and the TD target
         # Actor
+        values = self.value(states)
         with torch.no_grad():
-            not_dones = 1 - dones
-            td_target = rewards + self.gamma * self.value(next_states) * not_dones
-        value_loss = F.mse_loss(td_target.detach(), self.value(states))
+            next_values = self.value(next_states)
+            target_values = rewards + self.gamma * (1.0 - dones) * next_values
+
+        critic_loss = F.mse_loss(values, target_values)
 
         # Critic
         #        2. calculate the policy loss (similar to ex5) with advantage calculated from the value function. Normalise
         #           the advantage to zero mean and unit variance.
         with torch.no_grad():
-            # Advantage
-            adv = td_target - self.value(states)
-            # adv_norm: Size([24]) or Size([19]), tensor([-1.0160,  0.7055, -0.0833, ...]
-            adv_norm = (adv - adv.mean()) / adv.std()
-        policy_loss = torch.mean(-action_probs.squeeze() * adv_norm.detach())
+            adv = target_values - values
+            adv = (adv - adv.mean()) / adv.std()
+        weighted_probs = -action_probs * adv
+        actor_loss = torch.mean(weighted_probs)
 
         # Loss: Actor + Critic
-        loss = value_loss + policy_loss
+        loss = critic_loss + actor_loss
 
         #        3. update parameters of the policy and the value function jointly
         loss.backward()
@@ -152,13 +154,15 @@ class PG(object):
 
         #        2. if evaluation, return mean, otherwise, return a sample
         if evaluation:
-            action = dist.mean()
+            # action = dist.mean()
+            action = dist.mean
         else:
             action = dist.sample()
 
         # action: tensor([[-2.8355]])
         # act_logprob: tensor([[-4.9391]]) - Probability that action was taken
-        act_logprob = dist.log_prob(action)
+        # act_logprob = dist.log_prob(action)
+        act_logprob = dist.log_prob(action).sum(-1)
 
         #        3. the returned action and the act_logprob should be the torch.Tensors.
         #            Please always make sure the shape of variables is as you expected.
@@ -175,9 +179,11 @@ class PG(object):
         self.dones.append(torch.tensor([done], dtype=torch.float32))
         self.next_states.append(torch.tensor(next_observation, dtype=torch.float32))
 
-    # You can implement these if needed, following the previous exercises.
-    def load(self, filepath):
-        pass
+    def load(self, filepath: Path):
+        self.policy.load_state_dict(torch.load(f"{filepath}/actor.pt"))
+        self.value.load_state_dict(torch.load(f"{filepath}/critic.pt"))
 
-    def save(self, filepath):
-        pass
+    def save(self, filepath: Path):
+        filepath.mkdir(exist_ok=True)
+        torch.save(self.policy.state_dict(), f"{filepath}/actor.pt")
+        torch.save(self.value.state_dict(), f"{filepath}/critic.pt")
