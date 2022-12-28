@@ -9,11 +9,32 @@ Place where I do cool stuff with RL.
     <img src="assets/ex1-task4-rewards.png" width="400">
 </p>
 
+<p align="center">
+    <img src="assets/ex1-cartpole.gif" width="500" border=0>
+</p>
+
+
+<p align="center">
+    <img src="assets/ex1-reacher.gif" width="400" border=0>
+</p>
+
+
 ## Second exercise highlights
 
 <p align="center">
     <img src="assets/ex2.png" width="400">
 </p>
+
+
+
+<p align="center">
+    <img src="assets/ex2-env.gif" width="400" border=0>
+</p>
+
+<p align="center">
+    <img src="assets/ex2-value.gif" width="700" border=0>
+</p>
+
 
 ## Setup
 
