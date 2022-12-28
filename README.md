@@ -1,5 +1,13 @@
 # Reinforcement Learning repository
 
+<br />
+
+<p align="center">
+    <img src="assets/aalto-logo-long.png" width="400">
+</p>
+
+<br />
+
 Place where I do cool stuff with RL.
 
 ## First exercise highlights
